@@ -847,7 +847,7 @@ function initProfilesManager() {
   }
 }
 
-async function loadProfiles() {
+async function loadProfiles(selectProfileId = null) {
   try {
     const res = await fetch('/api/profiles');
     const data = await res.json();
@@ -857,7 +857,9 @@ async function loadProfiles() {
     renderProfilesGrid(cachedProfiles);
 
     if (cachedProfiles.length > 0) {
-      if (!selectedProfile || !cachedProfiles.some(p => p.id === selectedProfile.id)) {
+      if (selectProfileId) {
+        selectedProfile = cachedProfiles.find(p => p.id === selectProfileId) || cachedProfiles[0];
+      } else if (!selectedProfile || !cachedProfiles.some(p => p.id === selectedProfile.id)) {
         selectedProfile = cachedProfiles[0];
       }
       const selectEl = document.getElementById('select-saved-profile');
@@ -2690,25 +2692,14 @@ function initVideoScrubber() {
         const data = await res.json();
 
         if (data.success && data.audio_url) {
-          closeVideoScrubber();
+          extractLabel.textContent = '⏳ در حال بارگذاری صوت در استودیو...';
 
-          if (saveProfile && data.profile) {
-            await loadSavedProfiles();
-            // Switch to saved profile mode
-            const btnProfile = document.getElementById('btn-mode-profile');
-            if (btnProfile) btnProfile.click();
-            const profSelect = document.getElementById('select-saved-profile');
-            if (profSelect) {
-              profSelect.value = data.profile.id;
-              profSelect.dispatchEvent(new Event('change'));
-            }
-            alert(`🎉 صدای گوینده «${data.profile.name}» با موفقیت از فیلم استخراج و در بانک گویندگان ذخیره شد!`);
-          } else {
-            // Switch to Custom Clone Mode
-            const btnCustom = document.getElementById('btn-mode-custom');
-            if (btnCustom) btnCustom.click();
+          // 1. Ensure user is on Clone & Speech tab
+          const tabBtnClone = document.getElementById('tab-btn-clone');
+          if (tabBtnClone) tabBtnClone.click();
 
-            // Load extracted WAV into trimmer
+          // 2. Load extracted audio into Trimmer
+          try {
             const audioRes = await fetch(data.audio_url);
             const audioBlob = await audioRes.blob();
             const audioFile = new File([audioBlob], `video_voice_${data.duration_sec}s.wav`, { type: 'audio/wav' });
@@ -2716,23 +2707,55 @@ function initVideoScrubber() {
             if (trimmer) {
               await trimmer.loadAudioFile(audioFile);
               trimmer.setSelection(0, data.duration_sec);
-              document.getElementById('drop-zone').style.display = 'none';
-              document.getElementById('trimmer-wrapper').style.display = 'block';
+              const dropZone = document.getElementById('drop-zone');
+              const trimmerWrapper = document.getElementById('trimmer-wrapper');
+              if (dropZone) dropZone.style.display = 'none';
+              if (trimmerWrapper) trimmerWrapper.style.display = 'flex';
             }
+          } catch (te) {
+            console.warn('Trimmer load warning:', te);
+          }
 
-            // Fill ref text with transcription
-            const refTextInput = document.getElementById('clone-ref-text');
-            if (refTextInput && data.transcription) {
-              refTextInput.value = data.transcription;
+          // 3. Populate Whisper transcription
+          const refTextInput = document.getElementById('clone-ref-text');
+          if (refTextInput && data.transcription) {
+            refTextInput.value = data.transcription;
+          }
+
+          // 4. Default prompt text if empty
+          const targetText = document.getElementById('clone-target-text');
+          if (targetText && !targetText.value.trim()) {
+            targetText.value = 'سلام! این صدای شبیه‌سازی‌شده‌ی من است که از فیلم استخراج شده.';
+          }
+
+          // 5. Handle profile mode or custom mode
+          if (saveProfile && data.profile) {
+            await loadProfiles(data.profile.id);
+            const btnProfile = document.getElementById('btn-mode-profile');
+            if (btnProfile) btnProfile.click();
+
+            const profSelect = document.getElementById('select-saved-profile');
+            if (profSelect) {
+              profSelect.value = data.profile.id;
+              profSelect.dispatchEvent(new Event('change'));
             }
+            updateSelectedProfileCard(data.profile);
 
-            alert(`🎬 صدای کاراکتر با موفقیت از فیلم استخراج شد (${data.duration_sec} ثانیه) و در پنل کلون قرار گرفت!\n\nمتن شناسایی‌شده: «${data.transcription || '---'}»`);
+            closeVideoScrubber();
+            alert(`🎉 صدای گوینده «${data.profile.name}» با موفقیت از فیلم استخراج و در بانک گویندگان ذخیره گردید!\n\nاکنون این گوینده به عنوان صدای فعال انتخاب شده است. کافیست متن مورد نظرتان را در کادر بنویسید و دکمه «تولید فوری صدا» را بزنید.`);
+          } else {
+            const btnCustom = document.getElementById('btn-mode-custom');
+            if (btnCustom) btnCustom.click();
+
+            closeVideoScrubber();
+            alert(`🎬 صدای کاراکتر با موفقیت از فیلم استخراج شد (${data.duration_sec} ثانیه) و در بخش کلون قرار گرفت!\n\nمتن شناسایی‌شده: «${data.transcription || '---'}»\n\nاکنون متن خود را بنویسید و دکمه «کلون صدا» را بزنید.`);
           }
         } else {
           alert('خطا در استخراج صدای ویدیو: ' + (data.error || 'ناشناخته'));
         }
       } catch (err) {
-        alert('خطا در اتصال به سرور جهت استخراج صدا: ' + err.message);
+        console.error('Extraction error:', err);
+        alert('خطا در فرآیند استخراج صدا: ' + err.message);
       } finally {
         btnExtract.disabled = false;
         extractLabel.textContent = 'استخراج صدا و کلون';
