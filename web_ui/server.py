@@ -396,7 +396,7 @@ async def api_video_extract_segment(
 
         st = max(0.0, float(start_time or 0.0))
         et = max(st + 0.3, float(end_time or (st + 5.0)))
-        dur = min(15.0, et - st)
+        dur = max(0.5, min(300.0, et - st))  # Allow 5s, 30s, or any chosen duration up to 300s
 
         out_wav_name = f"extracted_video_{task_id}.wav"
         out_wav_path = OUTPUTS_DIR / out_wav_name

@@ -14,6 +14,7 @@ let vcSourceFile = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initThemeManager();
+  initUniversalConfirmModal();
   initTrimmer();
   initTabs();
   initSystemTelemetry();
@@ -26,8 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initQuickPauseToolbar();
   initCfgSlider();
   initProfilesManager();
+  initSaveSpeakerModal();
   initFormActions();
   initStoryStudio();
+  initScenarioLibrary();
   initVideoScrubber();
   loadProfiles();
   loadHistory();
@@ -62,6 +65,85 @@ function initThemeManager() {
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// 1.1. Universal Centered Confirmation Modal
+// ---------------------------------------------------------------------------
+let currentConfirmResolver = null;
+
+function initUniversalConfirmModal() {
+  const modal = document.getElementById('confirm-delete-modal');
+  const btnDanger = document.getElementById('btn-confirm-modal-danger');
+  const btnCancel = document.getElementById('btn-confirm-modal-cancel');
+
+  if (btnDanger) {
+    btnDanger.addEventListener('click', () => {
+      closeConfirmModal(true);
+    });
+  }
+
+  if (btnCancel) {
+    btnCancel.addEventListener('click', () => {
+      closeConfirmModal(false);
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeConfirmModal(false);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal && modal.style.display !== 'none') {
+      closeConfirmModal(false);
+    }
+  });
+}
+
+function showConfirmModal({
+  title = 'تایید حذف',
+  message = 'آیا از حذف این مورد اطمینان دارید؟ این عملیات غیرقابل بازگشت است.',
+  confirmText = 'بله، حذف کن',
+  cancelText = 'انصراف',
+  icon = '🗑️'
+} = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-delete-modal');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const msgEl = document.getElementById('confirm-modal-message');
+    const btnDanger = document.getElementById('btn-confirm-modal-danger');
+    const btnCancel = document.getElementById('btn-confirm-modal-cancel');
+    const iconEl = modal ? modal.querySelector('.confirm-modal-icon') : null;
+
+    if (!modal) {
+      resolve(window.confirm(message));
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    if (btnDanger) btnDanger.textContent = confirmText;
+    if (btnCancel) btnCancel.textContent = cancelText;
+    if (iconEl) iconEl.textContent = icon;
+
+    currentConfirmResolver = resolve;
+    modal.style.display = 'flex';
+  });
+}
+
+function closeConfirmModal(result) {
+  const modal = document.getElementById('confirm-delete-modal');
+  if (modal) modal.style.display = 'none';
+  if (currentConfirmResolver) {
+    const cb = currentConfirmResolver;
+    currentConfirmResolver = null;
+    cb(result);
+  }
+}
+window.showConfirmModal = showConfirmModal;
 
 // ---------------------------------------------------------------------------
 // 2. Waveform Trimmer (Compact Precision Editor)
@@ -934,10 +1016,10 @@ function renderProfilesGrid(profiles) {
   grid.innerHTML = profiles.map(p => `
     <div class="profile-card" id="prof-card-${p.id}">
       <div class="profile-card-header">
-        <div class="profile-avatar">${p.name ? p.name.charAt(0) : '👤'}</div>
+        <div class="profile-avatar">${p.name ? escapeHtml(p.name.charAt(0)) : '👤'}</div>
         <div class="profile-card-title-group">
-          <div class="profile-card-name">${p.name}</div>
-          <div class="profile-card-meta">${p.description || 'گوینده اختصاصی'}</div>
+          <div class="profile-card-name">${escapeHtml(p.name)}</div>
+          <div class="profile-card-meta">${escapeHtml(p.description || 'گوینده اختصاصی')}</div>
         </div>
       </div>
 
@@ -953,7 +1035,7 @@ function renderProfilesGrid(profiles) {
         <button class="btn-micro accent" style="flex:1;" onclick="useProfileForClone('${p.id}')">
           <span>⚡</span><span>انتخاب برای خوانش</span>
         </button>
-        <button class="btn-micro secondary" style="color:#ef4444;" onclick="deleteProfile('${p.id}', '${p.name}')" title="حذف">
+        <button class="btn-micro secondary" style="color:#ef4444;" onclick="confirmDeleteProfile('${p.id}')" title="حذف گوینده">
           <span>🗑️</span>
         </button>
       </div>
@@ -976,10 +1058,19 @@ window.useProfileForClone = function(profId) {
   }
 };
 
-window.deleteProfile = async function(profId, profName) {
-  if (!confirm(`آیا مطمئن هستید که می‌خواهید گوینده «${profName}» را به طور کامل حذف کنید؟`)) {
-    return;
-  }
+window.confirmDeleteProfile = async function(profId) {
+  const prof = cachedProfiles.find(p => p.id === profId);
+  const profName = prof ? prof.name : 'این گوینده';
+
+  const confirmed = await showConfirmModal({
+    title: 'حذف گوینده از کتابخانه',
+    message: `آیا از حذف کامل گوینده «${profName}» از بانک گویندگان اطمینان دارید؟`,
+    confirmText: 'بله، حذف کن',
+    cancelText: 'انصراف',
+    icon: '🗑️'
+  });
+
+  if (!confirmed) return;
 
   try {
     const res = await fetch(`/api/profiles/${profId}`, { method: 'DELETE' });
@@ -993,6 +1084,98 @@ window.deleteProfile = async function(profId, profName) {
     alert('خطا در ارسال درخواست: ' + err.message);
   }
 };
+window.deleteProfile = window.confirmDeleteProfile;
+
+// ---------------------------------------------------------------------------
+// 7.1. Dedicated Save Speaker to Library Modal
+// ---------------------------------------------------------------------------
+function initSaveSpeakerModal() {
+  const triggerBtn = document.getElementById('btn-save-current-to-profiles');
+  const modal = document.getElementById('save-speaker-modal');
+  const btnClose = document.getElementById('btn-close-save-speaker-modal');
+  const btnCancel = document.getElementById('btn-cancel-save-speaker');
+  const btnConfirm = document.getElementById('btn-confirm-save-speaker');
+  const inputName = document.getElementById('modal-speaker-name');
+  const inputDesc = document.getElementById('modal-speaker-desc');
+  const inputRefText = document.getElementById('modal-speaker-ref-text');
+
+  const openModal = () => {
+    if (!trimmer || !trimmer.audioBuffer) {
+      alert('لطفاً ابتدا یک فایل صوتی یا ویدیویی در استودیو بارگذاری نمایید.');
+      return;
+    }
+
+    const refTextVal = document.getElementById('clone-ref-text')?.value || '';
+    if (inputRefText) inputRefText.value = refTextVal;
+    if (inputName) inputName.value = '';
+    if (inputDesc) inputDesc.value = '';
+    if (modal) modal.style.display = 'flex';
+    setTimeout(() => { if (inputName) inputName.focus(); }, 60);
+  };
+
+  const closeModal = () => {
+    if (modal) modal.style.display = 'none';
+  };
+
+  if (triggerBtn) triggerBtn.addEventListener('click', openModal);
+  if (btnClose) btnClose.addEventListener('click', closeModal);
+  if (btnCancel) btnCancel.addEventListener('click', closeModal);
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', async () => {
+      const name = inputName?.value?.trim();
+      const desc = inputDesc?.value?.trim() || 'گوینده اختصاصی استودیو';
+      const refText = inputRefText?.value?.trim() || null;
+
+      if (!name) {
+        alert('لطفاً نام گوینده را وارد کنید.');
+        if (inputName) inputName.focus();
+        return;
+      }
+
+      if (!trimmer || !trimmer.audioBuffer) {
+        alert('صوتی برای ذخیره یافت نشد.');
+        return;
+      }
+
+      const label = document.getElementById('btn-save-speaker-label');
+      btnConfirm.disabled = true;
+      if (label) label.textContent = '⏳ در حال ذخیره وکتورها...';
+
+      try {
+        const wavBlob = await trimmer.getTrimmedWavBlob();
+        if (!wavBlob) {
+          throw new Error('خطا در دریافت قطعه صوتی.');
+        }
+
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('description', desc);
+        fd.append('audio', wavBlob, 'speaker_ref.wav');
+        if (refText) fd.append('ref_text', refText);
+        fd.append('greeting_text', `سلام، این صدای ${name} است که برای همیشه در استودیو ذخیره شده است.`);
+        fd.append('guidance_scale', 2.0);
+        fd.append('num_steps', 36);
+
+        await startGenerationTask('/api/profiles/create', fd);
+        closeModal();
+        await loadProfiles();
+        alert(`🎉 گوینده «${name}» با موفقیت در بانک گویندگان ذخیره گردید!`);
+      } catch (err) {
+        console.error('Save speaker error:', err);
+        alert('خطا در ذخیره گوینده: ' + err.message);
+      } finally {
+        btnConfirm.disabled = false;
+        if (label) label.textContent = '💾 ثبت دائمی در بانک گویندگان';
+      }
+    });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 8. Form Actions & Generation Submit (With Ctrl + Enter Shortcut)
@@ -1236,21 +1419,8 @@ function initFormActions() {
       formData.append('denoise', denoise);
       formData.append('normalize_volume', normalizeVol);
 
-      const chkSave = document.getElementById('chk-save-as-profile');
-      if (chkSave && chkSave.checked) {
-        const pName = document.getElementById('new-profile-name-input').value.trim();
-        const pDesc = document.getElementById('new-profile-desc-input').value.trim();
-        if (pName) {
-          formData.append('save_as_profile', 'true');
-          formData.append('profile_name', pName);
-          formData.append('profile_desc', pDesc);
-        }
-      }
-
+      formData.append('save_as_profile', 'false');
       await startGenerationTask('/api/clone', formData);
-      if (chkSave && chkSave.checked) {
-        await loadProfiles();
-      }
     }
   });
 
@@ -1593,9 +1763,16 @@ function initStoryStudio() {
   }
 
   if (btnClearAll) {
-    btnClearAll.addEventListener('click', () => {
+    btnClearAll.addEventListener('click', async () => {
       if (!storyDialogues.length) return;
-      if (confirm('آیا از حذف تمام دیالوگ‌ها اطمینان دارید؟')) {
+      const ok = await showConfirmModal({
+        title: 'پاک‌سازی تمام دیالوگ‌ها',
+        message: `آیا از پاک کردن تمام ${storyDialogues.length} دیالوگ موجود در این سناریو اطمینان دارید؟`,
+        confirmText: 'بله، همه را پاک کن',
+        cancelText: 'انصراف',
+        icon: '🗑️'
+      });
+      if (ok) {
         storyDialogues = [];
         renderStoryDialogues();
       }
@@ -1617,12 +1794,13 @@ function initStoryStudio() {
     });
   }
 
-  // Pre-seed default sample if dialogues list is empty
-  if (storyDialogues.length === 0) {
-    loadSampleStoryScenario(false);
-  } else {
-    renderStoryDialogues();
+  // Start with clean, empty scenario (no forced defaults)
+  storyDialogues = [];
+  const titleInput = document.getElementById('story-title-input');
+  if (titleInput && !titleInput.value) {
+    titleInput.value = 'سناریوی جدید';
   }
+  renderStoryDialogues();
 }
 
 function updateStorySpeakerSelects() {
@@ -1807,16 +1985,19 @@ function renderStoryDialogues() {
 
   if (storyDialogues.length === 0) {
     container.innerHTML = `
-      <div style="text-align:center; padding:3rem 1rem; background:var(--bg-card); border-radius:var(--radius-md); border:1px dashed var(--border-subtle);">
-        <div style="font-size:2.5rem; margin-bottom:0.5rem;">🎭</div>
-        <p style="font-size:0.95rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.5rem;">هیچ دیالوگی در سناریو وجود ندارد.</p>
-        <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">می‌توانید روی «افزودن دیالوگ جدید» کلیک کنید یا نمونه آماده را بارگذاری نمایید.</p>
-        <div style="display:flex; justify-content:center; gap:0.5rem;">
+      <div style="text-align:center; padding:3.5rem 1.5rem; background:var(--bg-card); border-radius:var(--radius-md); border:1px dashed var(--border-subtle); margin:0.5rem 0;">
+        <div style="font-size:3rem; margin-bottom:0.6rem;">🎭</div>
+        <p style="font-size:1.05rem; font-weight:800; color:var(--text-primary); margin-bottom:0.4rem;">استودیو آماده خلق داستان صوتی جدید</p>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.25rem;">هیچ دیالوگی در حال حاضر وجود ندارد. دیالوگ اول را اضافه کنید یا سناریوهای ذخیره‌شده را باز نمایید.</p>
+        <div style="display:flex; justify-content:center; gap:0.6rem; flex-wrap:wrap;">
           <button type="button" onclick="addStoryDialogue()" class="btn-compact-primary">
             <span>➕</span><span>افزودن اولین دیالوگ</span>
           </button>
+          <button type="button" onclick="openScenariosModal()" class="btn-compact-primary" style="background:var(--bg-surface-elevated); border:1px solid var(--border-color); color:var(--text-primary);">
+            <span>📂</span><span>سناریوهای من</span>
+          </button>
           <button type="button" onclick="loadSampleStoryScenario()" class="btn-compact-primary" style="background:linear-gradient(135deg, #ec4899, #8b5cf6);">
-            <span>✨</span><span>بارگذاری نمونه آماده (مریم و خودم)</span>
+            <span>✨</span><span>نمونه آماده</span>
           </button>
         </div>
       </div>
@@ -2114,14 +2295,302 @@ window.duplicateDialogue = function(idx) {
   renderStoryDialogues();
 };
 
-window.deleteDialogue = function(idx) {
+window.deleteDialogue = async function(idx) {
   const dlg = storyDialogues[idx];
   if (!dlg) return;
-  if (dlg.text.trim().length > 0) {
-    if (!confirm('آیا از حذف این دیالوگ اطمینان دارید؟')) return;
-  }
+  const preview = dlg.text && dlg.text.trim().length > 0
+    ? `«${dlg.text.slice(0, 35)}...»`
+    : `دیالوگ شماره #${idx + 1}`;
+
+  const confirmed = await showConfirmModal({
+    title: 'حذف دیالوگ',
+    message: `آیا از حذف ${preview} اطمینان دارید؟`,
+    confirmText: 'بله، حذف کن',
+    cancelText: 'انصراف',
+    icon: '🗑️'
+  });
+
+  if (!confirmed) return;
   storyDialogues.splice(idx, 1);
   renderStoryDialogues();
+};
+
+// ===========================================================================
+// 10.1. Scenario Library & Persistence Manager (Save, Open, Copy, Delete)
+// ===========================================================================
+const SCENARIOS_STORAGE_KEY = 'omnivoice_scenarios_db';
+let currentActiveScenarioId = null;
+
+function getSavedScenarios() {
+  try {
+    const raw = localStorage.getItem(SCENARIOS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Failed to parse saved scenarios', e);
+    return [];
+  }
+}
+
+function saveScenariosToStorage(list) {
+  try {
+    localStorage.setItem(SCENARIOS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error('Failed to save scenarios to localStorage', e);
+  }
+}
+
+function initScenarioLibrary() {
+  const btnNewScenario = document.getElementById('btn-story-new-scenario');
+  const btnSaveScenario = document.getElementById('btn-story-save-scenario');
+  const btnOpenScenarios = document.getElementById('btn-story-open-scenarios');
+  const modal = document.getElementById('scenarios-library-modal');
+  const btnCloseModal = document.getElementById('btn-close-scenarios-modal');
+  const btnModalNew = document.getElementById('btn-modal-create-new-scenario');
+  const searchInput = document.getElementById('scenario-search-input');
+
+  if (btnNewScenario) {
+    btnNewScenario.addEventListener('click', async () => {
+      await handleCreateNewScenario();
+    });
+  }
+
+  if (btnModalNew) {
+    btnModalNew.addEventListener('click', async () => {
+      closeScenariosModal();
+      await handleCreateNewScenario();
+    });
+  }
+
+  if (btnSaveScenario) {
+    btnSaveScenario.addEventListener('click', () => {
+      handleSaveCurrentScenario();
+    });
+  }
+
+  if (btnOpenScenarios) {
+    btnOpenScenarios.addEventListener('click', () => {
+      openScenariosModal();
+    });
+  }
+
+  if (btnCloseModal) btnCloseModal.addEventListener('click', closeScenariosModal);
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeScenariosModal();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderScenariosList(searchInput.value.trim());
+    });
+  }
+}
+
+async function handleCreateNewScenario() {
+  if (storyDialogues.length > 0) {
+    const ok = await showConfirmModal({
+      title: 'ایجاد سناریوی جدید',
+      message: 'آیا می‌خواهید سناریوی جدیدی شروع کنید؟ در صورت ذخیره نکردن سناریوی فعلی، تغییرات از بین خواهد رفت.',
+      confirmText: 'بله، سناریوی جدید بساز',
+      cancelText: 'انصراف',
+      icon: '✨'
+    });
+    if (!ok) return;
+  }
+
+  storyDialogues = [];
+  currentActiveScenarioId = null;
+  const titleInput = document.getElementById('story-title-input');
+  if (titleInput) titleInput.value = 'سناریوی جدید';
+  renderStoryDialogues();
+}
+
+function handleSaveCurrentScenario() {
+  if (!storyDialogues || !storyDialogues.length) {
+    alert('سناریو هنوز خالی است. لطفاً ابتدا حداقل یک دیالوگ اضافه کنید.');
+    return;
+  }
+
+  const titleInput = document.getElementById('story-title-input');
+  let title = titleInput?.value?.trim();
+  if (!title || title === 'سناریوی جدید') {
+    title = prompt('نام این سناریو را وارد کنید:', title || 'سناریوی من');
+    if (!title || !title.trim()) return;
+    title = title.trim();
+    if (titleInput) titleInput.value = title;
+  }
+
+  const scenarios = getSavedScenarios();
+  const nowStr = new Date().toLocaleDateString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+  const uniqueSpeakers = new Set(storyDialogues.map(d => d.speaker_id)).size;
+
+  if (currentActiveScenarioId) {
+    const existingIdx = scenarios.findIndex(s => s.id === currentActiveScenarioId);
+    if (existingIdx !== -1) {
+      scenarios[existingIdx] = {
+        ...scenarios[existingIdx],
+        title: title,
+        dialogues: JSON.parse(JSON.stringify(storyDialogues)),
+        updated_at: nowStr,
+        dialogues_count: storyDialogues.length,
+        speakers_count: uniqueSpeakers,
+      };
+      saveScenariosToStorage(scenarios);
+      alert(`💾 سناریو «${title}» با موفقیت به‌روزرسانی و ذخیره شد!`);
+      return;
+    }
+  }
+
+  const newId = 'scen_' + Date.now().toString(36);
+  currentActiveScenarioId = newId;
+  const newRecord = {
+    id: newId,
+    title: title,
+    dialogues: JSON.parse(JSON.stringify(storyDialogues)),
+    created_at: nowStr,
+    updated_at: nowStr,
+    dialogues_count: storyDialogues.length,
+    speakers_count: uniqueSpeakers,
+  };
+
+  scenarios.unshift(newRecord);
+  saveScenariosToStorage(scenarios);
+  alert(`💾 سناریو «${title}» با موفقیت در کتابخانه سناریوها ذخیره گردید!`);
+}
+
+function openScenariosModal() {
+  const modal = document.getElementById('scenarios-library-modal');
+  if (modal) modal.style.display = 'flex';
+  const searchInput = document.getElementById('scenario-search-input');
+  if (searchInput) searchInput.value = '';
+  renderScenariosList();
+}
+
+function closeScenariosModal() {
+  const modal = document.getElementById('scenarios-library-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderScenariosList(filterQuery = '') {
+  const container = document.getElementById('scenarios-list-container');
+  if (!container) return;
+
+  let scenarios = getSavedScenarios();
+  if (filterQuery) {
+    scenarios = scenarios.filter(s => s.title && s.title.toLowerCase().includes(filterQuery.toLowerCase()));
+  }
+
+  if (!scenarios.length) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:2.5rem 1rem; color:var(--text-muted);">
+        <div style="font-size:2.4rem; margin-bottom:0.5rem;">📖</div>
+        <p style="font-size:0.95rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.4rem;">هیچ سناریویی یافت نشد.</p>
+        <p style="font-size:0.78rem;">دیالوگ‌های خود را در استودیو بنویسید و روی دکمه «ذخیره سناریو» کلیک کنید.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = scenarios.map(s => {
+    const firstSnippet = s.dialogues && s.dialogues.length > 0 && s.dialogues[0].text
+      ? s.dialogues[0].text
+      : 'بدون متن...';
+
+    return `
+      <div class="scenario-item-card" id="scen-card-${s.id}">
+        <div class="scenario-item-header">
+          <div class="scenario-item-title">
+            <span>🎭</span>
+            <span>${escapeHtml(s.title)}</span>
+          </div>
+          <div class="scenario-item-badges">
+            <span class="badge-success-micro">${s.dialogues_count || (s.dialogues ? s.dialogues.length : 0)} دیالوگ</span>
+            <span style="color:var(--text-muted); font-size:0.7rem;">🕒 ${s.updated_at || s.created_at || ''}</span>
+          </div>
+        </div>
+
+        <div class="scenario-item-preview">
+          <span>شروع: </span>
+          <span>${escapeHtml(firstSnippet)}</span>
+        </div>
+
+        <div class="scenario-item-actions">
+          <button type="button" class="btn-micro primary" onclick="loadSavedScenario('${s.id}')">
+            <span>📂</span><span>باز کردن و ویرایش</span>
+          </button>
+          <button type="button" class="btn-micro secondary" onclick="duplicateSavedScenario('${s.id}')" title="تکثیر این سناریو">
+            <span>⎘</span><span>کپی</span>
+          </button>
+          <button type="button" class="btn-micro secondary" style="color:#ef4444;" onclick="deleteSavedScenario('${s.id}')" title="حذف سناریو">
+            <span>🗑️</span><span>حذف</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.openScenariosModal = openScenariosModal;
+window.closeScenariosModal = closeScenariosModal;
+
+window.loadSavedScenario = function(scenId) {
+  const scenarios = getSavedScenarios();
+  const found = scenarios.find(s => s.id === scenId);
+  if (!found) {
+    alert('سناریو یافت نشد.');
+    return;
+  }
+
+  currentActiveScenarioId = found.id;
+  storyDialogues = JSON.parse(JSON.stringify(found.dialogues || []));
+  const titleInput = document.getElementById('story-title-input');
+  if (titleInput) titleInput.value = found.title || 'سناریوی من';
+
+  renderStoryDialogues();
+  closeScenariosModal();
+  alert(`سناریوی «${found.title}» با موفقیت باز شد (${storyDialogues.length} دیالوگ).`);
+};
+
+window.duplicateSavedScenario = function(scenId) {
+  const scenarios = getSavedScenarios();
+  const found = scenarios.find(s => s.id === scenId);
+  if (!found) return;
+
+  const nowStr = new Date().toLocaleDateString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+  const newCopy = {
+    ...JSON.parse(JSON.stringify(found)),
+    id: 'scen_' + Date.now().toString(36),
+    title: `کپی از ${found.title}`,
+    updated_at: nowStr,
+    created_at: nowStr,
+  };
+
+  scenarios.unshift(newCopy);
+  saveScenariosToStorage(scenarios);
+  renderScenariosList();
+};
+
+window.deleteSavedScenario = async function(scenId) {
+  const scenarios = getSavedScenarios();
+  const found = scenarios.find(s => s.id === scenId);
+  if (!found) return;
+
+  const confirmed = await showConfirmModal({
+    title: 'حذف سناریو',
+    message: `آیا از حذف کامل سناریوی «${found.title}» اطمینان دارید؟`,
+    confirmText: 'بله، حذف کن',
+    cancelText: 'انصراف',
+    icon: '🗑️'
+  });
+  if (!confirmed) return;
+
+  const filtered = scenarios.filter(s => s.id !== scenId);
+  saveScenariosToStorage(filtered);
+  if (currentActiveScenarioId === scenId) {
+    currentActiveScenarioId = null;
+  }
+  renderScenariosList();
 };
 
 window.insertTextToDialogue = function(idx, prefix, suffix = '') {
@@ -2647,7 +3116,7 @@ function initVideoScrubber() {
     });
   }
 
-  // Extract & Clone Action
+  // Extract Segment & Transfer to Custom Clone Studio
   if (btnExtract) {
     btnExtract.addEventListener('click', async () => {
       if (!currentVideoFile && !currentVideoPath) {
@@ -2657,7 +3126,7 @@ function initVideoScrubber() {
 
       const segDur = videoOutTime - videoInTime;
       if (segDur <= 0.2) {
-        alert('طول بخش انتخابی دیالوگ بسیار کوتاه است. لطفاً حداقل ۱ تا ۱۰ ثانیه انتخاب کنید.');
+        alert('طول بخش انتخابی دیالوگ بسیار کوتاه است. لطفاً حداقل ۱ ثانیه انتخاب کنید.');
         return;
       }
 
@@ -2677,13 +3146,7 @@ function initVideoScrubber() {
         fd.append('end_time', videoOutTime.toFixed(3));
         fd.append('denoise', document.getElementById('chk-video-denoise')?.checked ?? true);
         fd.append('auto_transcribe', document.getElementById('chk-video-auto-transcribe')?.checked ?? true);
-
-        const saveProfile = chkSaveProfile?.checked ?? false;
-        fd.append('save_as_profile', saveProfile);
-        if (saveProfile) {
-          fd.append('profile_name', profileNameInput?.value?.trim() || 'کاراکتر فیلم');
-          fd.append('profile_desc', profileDescInput?.value?.trim() || 'استخراج‌شده از فیلم');
-        }
+        fd.append('save_as_profile', false); // Do NOT pollute speaker bank with test voices!
 
         const res = await fetch('/api/video/extract-segment', {
           method: 'POST',
@@ -2692,17 +3155,20 @@ function initVideoScrubber() {
         const data = await res.json();
 
         if (data.success && data.audio_url) {
-          extractLabel.textContent = '⏳ در حال بارگذاری صوت در استودیو...';
+          extractLabel.textContent = '⏳ در حال انتقال به استودیو...';
 
-          // 1. Ensure user is on Clone & Speech tab
+          // 1. Switch to Clone tab & Custom clone mode
           const tabBtnClone = document.getElementById('tab-btn-clone');
           if (tabBtnClone) tabBtnClone.click();
 
-          // 2. Load extracted audio into Trimmer
+          const btnCustom = document.getElementById('btn-mode-custom');
+          if (btnCustom) btnCustom.click();
+
+          // 2. Fetch and load extracted audio into AudioTrimmer
           try {
             const audioRes = await fetch(data.audio_url);
             const audioBlob = await audioRes.blob();
-            const audioFile = new File([audioBlob], `video_voice_${data.duration_sec}s.wav`, { type: 'audio/wav' });
+            const audioFile = new File([audioBlob], `extracted_video_${data.duration_sec}s.wav`, { type: 'audio/wav' });
 
             if (trimmer) {
               await trimmer.loadAudioFile(audioFile);
@@ -2716,7 +3182,7 @@ function initVideoScrubber() {
             console.warn('Trimmer load warning:', te);
           }
 
-          // 3. Populate Whisper transcription
+          // 3. Populate Whisper transcription in Reference Text
           const refTextInput = document.getElementById('clone-ref-text');
           if (refTextInput && data.transcription) {
             refTextInput.value = data.transcription;
@@ -2728,28 +3194,8 @@ function initVideoScrubber() {
             targetText.value = 'سلام! این صدای شبیه‌سازی‌شده‌ی من است که از فیلم استخراج شده.';
           }
 
-          // 5. Handle profile mode or custom mode
-          if (saveProfile && data.profile) {
-            await loadProfiles(data.profile.id);
-            const btnProfile = document.getElementById('btn-mode-profile');
-            if (btnProfile) btnProfile.click();
-
-            const profSelect = document.getElementById('select-saved-profile');
-            if (profSelect) {
-              profSelect.value = data.profile.id;
-              profSelect.dispatchEvent(new Event('change'));
-            }
-            updateSelectedProfileCard(data.profile);
-
-            closeVideoScrubber();
-            alert(`🎉 صدای گوینده «${data.profile.name}» با موفقیت از فیلم استخراج و در بانک گویندگان ذخیره گردید!\n\nاکنون این گوینده به عنوان صدای فعال انتخاب شده است. کافیست متن مورد نظرتان را در کادر بنویسید و دکمه «تولید فوری صدا» را بزنید.`);
-          } else {
-            const btnCustom = document.getElementById('btn-mode-custom');
-            if (btnCustom) btnCustom.click();
-
-            closeVideoScrubber();
-            alert(`🎬 صدای کاراکتر با موفقیت از فیلم استخراج شد (${data.duration_sec} ثانیه) و در بخش کلون قرار گرفت!\n\nمتن شناسایی‌شده: «${data.transcription || '---'}»\n\nاکنون متن خود را بنویسید و دکمه «کلون صدا» را بزنید.`);
-          }
+          closeVideoScrubber();
+          alert(`🎬 صدای فیلم با موفقیت استخراج شد (${data.duration_sec} ثانیه) و در بخش کلون قرار گرفت!\n\nمتن شناسایی‌شده: «${data.transcription || '---'}»\n\nمی‌توانید پارامترها را تنظیم کرده و به تعداد دلخواه تست کنید.\nهر زمان از کیفیت صدا مطمئن شدید، دکمه «💾 افزودن به کتابخانه گویندگان» را بزنید.`);
         } else {
           alert('خطا در استخراج صدای ویدیو: ' + (data.error || 'ناشناخته'));
         }
@@ -2758,8 +3204,8 @@ function initVideoScrubber() {
         alert('خطا در فرآیند استخراج صدا: ' + err.message);
       } finally {
         btnExtract.disabled = false;
-        extractLabel.textContent = 'استخراج صدا و کلون';
-        if (extractStatus) extractStatus.textContent = 'بازه ۳ تا ۱۰ ثانیه واضح‌ترین بخش صدای کاراکتر را انتخاب نمایید.';
+        extractLabel.textContent = 'استخراج صدا و انتقال به استودیوی کلون';
+        if (extractStatus) extractStatus.textContent = 'بخش مورد نظرتان از فیلم (هر چند ثانیه که مایلید) را انتخاب کرده و دکمه استخراج را بزنید.';
       }
     });
   }

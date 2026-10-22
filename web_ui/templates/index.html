@@ -180,16 +180,15 @@
               </button>
             </div>
 
-            <!-- Save as Profile Checkbox -->
-            <div class="save-profile-checkbox-bar">
-              <label class="compact-checkbox-label">
-                <input type="checkbox" id="chk-save-as-profile">
-                <span>این صدا را برای همیشه در بانک گویندگان من ذخیره کن</span>
-              </label>
-              <div id="save-as-profile-fields" style="display:none;" class="save-profile-inputs">
-                <input type="text" id="new-profile-name-input" class="form-input-sm" placeholder="نام گوینده (مثلاً: صدای اصلی من)...">
-                <input type="text" id="new-profile-desc-input" class="form-input-sm" placeholder="توضیحات اختیاری...">
+            <!-- Action Toolbar for Custom Audio: Explicit Library Registration Button -->
+            <div class="save-profile-action-strip" style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.45rem 0.75rem; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-top:0.45rem;">
+              <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.75rem; color:var(--text-secondary);">
+                <span>💡</span>
+                <span>می‌توانید آزادانه تست و آزمایش کنید بدون پر شدن کتابخانه. هر زمان مایل بودید، صدا را ذخیره کنید:</span>
               </div>
+              <button type="button" id="btn-save-current-to-profiles" class="btn-micro accent" style="background:linear-gradient(135deg, #10b981, #059669); color:white; font-weight:700; white-space:nowrap; padding:0.35rem 0.8rem;" title="ثبت دائمی این صوت در کتابخانه">
+                <span>💾</span><span>افزودن به کتابخانه گویندگان</span>
+              </button>
             </div>
           </div>
 
@@ -534,14 +533,23 @@
               </div>
             </div>
             <div class="story-header-actions">
-              <button type="button" id="btn-story-load-sample" class="btn-micro accent" title="بارگذاری نمونه آماده سناریو عاشقانه و طنز">
-                <span>✨</span><span>نمونه آماده (مریم و خودم)</span>
+              <button type="button" id="btn-story-new-scenario" class="btn-micro primary" title="شروع سناریوی جدید و خالی">
+                <span>➕</span><span>سناریوی جدید</span>
+              </button>
+              <button type="button" id="btn-story-save-scenario" class="btn-micro accent" style="background:linear-gradient(135deg, #10b981, #059669); color:white;" title="ذخیره این سناریو در کتابخانه">
+                <span>💾</span><span>ذخیره سناریو</span>
+              </button>
+              <button type="button" id="btn-story-open-scenarios" class="btn-micro secondary" title="مشاهده، باز کردن، کپی و حذف سناریوهای من">
+                <span>📂</span><span>سناریوهای من</span>
+              </button>
+              <button type="button" id="btn-story-load-sample" class="btn-micro secondary" title="بارگذاری نمونه آماده سناریو عاشقانه و طنز">
+                <span>✨</span><span>نمونه آماده</span>
               </button>
               <button type="button" id="btn-story-export-json" class="btn-micro secondary" title="برون‌ریزی سناریو به صورت فایل JSON">
-                <span>📤</span><span>ذخیره سناریو</span>
+                <span>📤</span><span>خروجی JSON</span>
               </button>
               <button type="button" id="btn-story-import-trigger" class="btn-micro secondary" title="درون‌ریزی سناریو از فایل JSON">
-                <span>📥</span><span>باز کردن سناریو</span>
+                <span>📥</span><span>ورود JSON</span>
               </button>
               <input type="file" id="story-import-file" accept=".json" style="display:none;">
               <button type="button" id="btn-story-clear-all" class="btn-micro danger" title="پاک‌سازی تمام دیالوگ‌ها">
@@ -554,7 +562,7 @@
           <div class="story-global-strip">
             <div class="story-meta-field">
               <label for="story-title-input">عنوان داستان صوتی:</label>
-              <input type="text" id="story-title-input" class="form-input-sm" value="داستان گفتگوی دونفره" placeholder="مثلاً: گفتگوی عاشقانه مریم و محمد">
+              <input type="text" id="story-title-input" class="form-input-sm" value="سناریوی جدید" placeholder="مثلاً: گفتگوی عاشقانه مریم و محمد">
             </div>
             <div class="story-meta-field">
               <label for="story-output-format">فرمت خروجی صوت:</label>
@@ -1050,32 +1058,109 @@
         </label>
       </div>
 
-      <!-- Action Choice: Direct Clone vs Save as Permanent Profile -->
-      <div class="video-target-mode-row">
-        <label class="compact-checkbox-label">
-          <input type="checkbox" id="chk-video-save-profile">
-          <span>ذخیره مستقیم در «بانک گویندگان من» به عنوان پروفایل دائمی (مثلاً جومونگ)</span>
-        </label>
-
-        <div id="video-profile-inputs" style="display:none; align-items:center; gap:0.5rem; flex:1;">
-          <input type="text" id="video-profile-name-input" class="form-input-sm" placeholder="نام گوینده (مثلاً: جومونگ، علیرضا باشکندی)...">
-          <input type="text" id="video-profile-desc-input" class="form-input-sm" placeholder="توضیحات (اختیاری: صدای جومونگ در فیلم)">
-        </div>
-      </div>
-
       <!-- Modal Footer -->
       <div class="video-modal-footer">
-        <span id="video-extract-status" class="video-status-text">بازه ۳ تا ۱۰ ثانیه واضح‌ترین بخش صدای کاراکتر را انتخاب نمایید.</span>
+        <span id="video-extract-status" class="video-status-text">بخش مورد نظرتان از فیلم (هر چند ثانیه که مایلید) را انتخاب کرده و دکمه استخراج را بزنید.</span>
         
         <div style="display:flex; align-items:center; gap:0.5rem;">
           <button type="button" id="btn-cancel-video-scrubber" class="btn-micro secondary">انصراف</button>
           <button type="button" id="btn-extract-and-clone-video" class="btn-glow-primary">
             <span>✂️</span>
-            <span id="btn-extract-label">استخراج صدا و کلون</span>
+            <span id="btn-extract-label">استخراج صدا و انتقال به استودیوی کلون</span>
           </button>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       1. UNIVERSAL CENTERED CONFIRMATION / DELETE MODAL
+       =============================================================== -->
+  <div id="confirm-delete-modal" class="modal-overlay" style="display:none; z-index:99999;">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon-wrap">
+        <span class="confirm-modal-icon">🗑️</span>
+      </div>
+      <h3 class="confirm-modal-title" id="confirm-modal-title">تایید حذف</h3>
+      <p class="confirm-modal-message" id="confirm-modal-message">آیا از حذف این مورد اطمینان دارید؟ این عملیات غیرقابل بازگشت است.</p>
+      <div class="confirm-modal-actions">
+        <button type="button" id="btn-confirm-modal-cancel" class="btn-modal-cancel">انصراف</button>
+        <button type="button" id="btn-confirm-modal-danger" class="btn-modal-danger">بله، حذف کن</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       2. SCENARIO MANAGEMENT & LIBRARY MODAL
+       =============================================================== -->
+  <div id="scenarios-library-modal" class="modal-overlay" style="display:none; z-index:99998;">
+    <div class="scenarios-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-icon-badge">📚</span>
+          <div>
+            <h3 class="modal-title">کتابخانه سناریوها و دیالوگ‌های من</h3>
+            <p class="modal-sub">سناریوهای صوتی ذخیره‌شده را باز کنید، ویرایش نمایید، کپی کنید یا حذف نمایید.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-scenarios-modal" class="btn-modal-close" title="بستن">✕</button>
+      </div>
+
+      <div class="scenarios-modal-body">
+        <div class="scenarios-filter-bar">
+          <input type="text" id="scenario-search-input" class="form-input-sm" placeholder="🔍 جستجو در نام سناریوها...">
+          <button type="button" id="btn-modal-create-new-scenario" class="btn-compact-primary">
+            <span>➕ سناریوی جدید</span>
+          </button>
+        </div>
+        <div id="scenarios-list-container" class="scenarios-list-container">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       3. SAVE TO SPEAKER BANK (PROFILES) MODAL
+       =============================================================== -->
+  <div id="save-speaker-modal" class="modal-overlay" style="display:none; z-index:99997;">
+    <div class="save-speaker-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-icon-badge">💾</span>
+          <div>
+            <h3 class="modal-title">افزودن به کتابخانه گویندگان (پروفایل دائمی)</h3>
+            <p class="modal-sub">این صدا و وکتورهای صوتی آن برای همیشه در بانک گویندگان ذخیره و در دسترس خواهند بود.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-save-speaker-modal" class="btn-modal-close" title="بستن">✕</button>
+      </div>
+
+      <div class="save-speaker-body" style="padding:1.1rem; display:flex; flex-direction:column; gap:0.75rem;">
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">نام گوینده: <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="modal-speaker-name" class="form-input-sm" placeholder="مثلاً: خر شرک، گوینده فیلم، صدای خودم...">
+        </div>
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">توضیحات (اختیاری):</label>
+          <input type="text" id="modal-speaker-desc" class="form-input-sm" placeholder="مثلاً: استخراج‌شده از فیلم با لحن هیجان‌زده">
+        </div>
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">متن رفرنس (اختیاری):</label>
+          <input type="text" id="modal-speaker-ref-text" class="form-input-sm" placeholder="متن کلام فایل مرجع (در صورت خالی بودن خودکار توسط Whisper شناسایی می‌شود)">
+        </div>
+        <div style="font-size:0.74rem; color:var(--text-muted); background:var(--bg-input); padding:0.5rem 0.75rem; border-radius:var(--radius-xs); line-height:1.5;">
+          💡 <strong>توجه:</strong> با افزودن به کتابخانه، این صدا در بانک دائمی ذخیره شده و می‌توانید در تمام پروژه‌ها و دیالوگ‌ها به راحتی از آن استفاده کنید.
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem; padding:0.75rem 1.1rem; border-top:1px solid var(--border-subtle); background:var(--bg-card);">
+        <button type="button" id="btn-cancel-save-speaker" class="btn-micro secondary">انصراف</button>
+        <button type="button" id="btn-confirm-save-speaker" class="btn-glow-primary">
+          <span id="btn-save-speaker-label">💾 ثبت دائمی در بانک گویندگان</span>
+        </button>
+      </div>
     </div>
   </div>
 
