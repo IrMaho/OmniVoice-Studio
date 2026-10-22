@@ -94,11 +94,13 @@ def convert_voice_timbre(
     f0_target = target_profile["median_f0"]
     f0_source = source_profile["median_f0"]
 
-    # 3. Compute pitch shift required to align fundamental frequencies
+    # 3. Compute pitch shift required to align fundamental frequencies (clamped to realistic human delta)
     auto_semitones = 12.0 * np.log2(max(f0_target, 50.0) / max(f0_source, 50.0))
-    total_semitones = (auto_semitones * timbre_strength) + pitch_offset_semitones
-    # Bound reasonable pitch shift (-14 to +14 semitones)
-    total_semitones = float(np.clip(total_semitones, -14.0, 14.0))
+    # Human voices of the same gender never differ by more than ~2.5 semitones in natural speech
+    auto_semitones_clamped = float(np.clip(auto_semitones, -2.5, 2.5))
+    total_semitones = (auto_semitones_clamped * timbre_strength) + pitch_offset_semitones
+    # Bound reasonable pitch shift (-4.0 to +4.0 semitones max) to strictly prevent monster/demon voice
+    total_semitones = float(np.clip(total_semitones, -4.0, 4.0))
 
     logger.info(f"Voice Conversion: source F0={f0_source:.1f}Hz, target F0={f0_target:.1f}Hz, shift={total_semitones:.2f} st")
 
@@ -115,7 +117,7 @@ def convert_voice_timbre(
     else:
         shifted_wav = src_wav
 
-    # 5. Formant & Spectral Envelope Morphing
+    # 5. Formant & Spectral Envelope Morphing (Gentle EQ matching without boominess)
     n_fft = 1024
     hop_length = 256
     
@@ -132,9 +134,9 @@ def convert_voice_timbre(
     # Transfer ratio
     ratio = (target_env + 1e-4) / (current_env + 1e-4)
     # Blend according to timbre_strength
-    ratio = 1.0 + timbre_strength * (ratio - 1.0)
-    # Clip ratio to prevent harsh resonances
-    ratio = np.clip(ratio, 0.35, 2.8)
+    ratio = 1.0 + (timbre_strength * 0.5) * (ratio - 1.0)
+    # Moderate ratio clip (0.65 to 1.45) to prevent booming bass and robotic artifacts
+    ratio = np.clip(ratio, 0.65, 1.45)
     if len(ratio) >= 25:
         ratio_smooth = signal.savgol_filter(ratio, 25, 2)
     else:

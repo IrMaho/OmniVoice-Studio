@@ -1161,6 +1161,8 @@ async def api_convert_voice(
                 raise ValueError("گفتار یا کلام مشخصی در فایل صوتی ورودی تشخیص داده نشد.")
 
             clean_text = normalize_persian_for_tts(spoken_text)
+            clean_text = diacritize_persian(clean_text)
+            logger.info(f"VC diacritized text: {clean_text[:80]}...")
 
             current_progress.update({
                 "stage": "diffusion",
@@ -1168,14 +1170,23 @@ async def api_convert_voice(
                 "percent": 55,
             })
 
+            # CFG 2.0 is optimal for natural human voice cloning (values >2.3 cause boominess & distortion)
+            safe_cfg = float(guidance_scale or 2.0)
+            if safe_cfg > 2.3:
+                safe_cfg = 2.0
+
             gen_config = OmniVoiceGenerationConfig(
                 num_step=int(num_steps or 36),
-                guidance_scale=float(guidance_scale or 2.0),
+                guidance_scale=safe_cfg,
                 denoise=bool(denoise),
                 preprocess_prompt=True,
                 postprocess_output=True,
                 audio_chunk_duration=12.0,
             )
+
+            # Get duration of source audio to preserve original pacing
+            src_info = sf.info(str(src_audio_path))
+            src_duration = src_info.duration
 
             gen_kwargs = {
                 "text": clean_text,
@@ -1186,6 +1197,9 @@ async def api_convert_voice(
                 gen_kwargs["duration"] = float(duration)
             elif speed and float(speed) != 1.0:
                 gen_kwargs["speed"] = float(speed)
+            else:
+                # Match the exact pacing of the original speaker!
+                gen_kwargs["duration"] = round(src_duration, 1)
 
             if prompt_path:
                 gen_kwargs["voice_clone_prompt"] = VoiceClonePrompt.load(prompt_path)

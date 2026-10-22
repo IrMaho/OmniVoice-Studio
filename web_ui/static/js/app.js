@@ -326,6 +326,8 @@ function initVoiceConversionUI() {
 
   if (engineOmniRadio) engineOmniRadio.addEventListener('change', updateEngineUI);
   if (engineDspRadio) engineDspRadio.addEventListener('change', updateEngineUI);
+  if (labelEngineOmni) labelEngineOmni.addEventListener('click', () => { if (engineOmniRadio) { engineOmniRadio.checked = true; updateEngineUI(); } });
+  if (labelEngineDsp) labelEngineDsp.addEventListener('click', () => { if (engineDspRadio) { engineDspRadio.checked = true; updateEngineUI(); } });
 
   const pitchSlider = document.getElementById('vc-pitch-slider');
   const pitchBadge = document.getElementById('vc-pitch-badge');
