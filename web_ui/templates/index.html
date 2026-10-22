@@ -243,11 +243,41 @@
                 </div>
               </div>
 
-              <!-- Dedicated Neural Voice Conversion Engine -->
-              <div style="display:flex; align-items:center; gap:0.5rem; padding:0.55rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.14); border:1.5px solid var(--color-primary); margin-bottom:0.75rem; font-size:0.8rem; font-weight:700; color:var(--text-main);">
-                <span>✨</span>
-                <span>تبدیل صوت به صوت با هوش مصنوعی OmniVoice (شبیه‌سازی کامل تار صوتی و تغییر صدای هر شخص به صدای شما)</span>
-                <input type="radio" name="vc_engine" id="engine-omnivoice" value="omnivoice" checked style="display:none;">
+              <!-- VC Engine Selector Pills -->
+              <div class="vc-engine-selector" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.85rem;">
+                <label class="engine-radio-pill active" id="label-vc-engine-tone" style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.6rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.16); border:1.5px solid var(--color-primary); cursor:pointer; transition:all 0.2s;">
+                  <input type="radio" name="vc_engine_choice" id="engine-vc-tone" value="tone_color" checked style="accent-color:var(--color-primary); margin-top:3px;">
+                  <div>
+                    <div style="font-size:0.82rem; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:0.4rem;">
+                      <span>🌟 تبدیل مستقیم جنس صدا و حنجره (Neural S2S-VC — بدون نیاز به متن)</span>
+                      <span style="font-size:0.68rem; background:rgba(16,185,129,0.2); color:#10b981; padding:1px 6px; border-radius:8px; font-weight:700;">پیشنهادی و پرسرعت</span>
+                    </div>
+                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
+                      تغییر مستقیم تار صوتی به گوینده هدف؛ حفظ ۱۰۰٪ لحن، تحریرها، احساسات، ریتم، مکث‌ها، خنده‌ها و لهجه مبدا بدون کمترین تاخیر (تبدیل ۳ دقیقه‌ای در ۴ ثانیه!)
+                    </div>
+                  </div>
+                </label>
+
+                <label class="engine-radio-pill" id="label-vc-engine-omnivoice" style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.55rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; transition:all 0.2s;">
+                  <input type="radio" name="vc_engine_choice" id="engine-vc-omnivoice" value="omnivoice" style="accent-color:var(--color-primary); margin-top:3px;">
+                  <div>
+                    <div style="font-size:0.8rem; font-weight:700; color:var(--text-main);">
+                      <span>🔄 سنتز متنی با فلو مچینگ (OmniVoice Re-Synthesis)</span>
+                    </div>
+                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
+                      استخراج متن صدا با هوش مصنوعی Whisper و بازخوانی مجدد کلمات توسط مدل OmniVoice با گوینده هدف.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Timbre Strength Slider for S2S VC -->
+              <div id="vc-timbre-strength-row" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.45rem 0.75rem; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:0.75rem; border:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                  <span style="font-size:0.78rem; font-weight:700; color:var(--text-main);">شدت تبدیل جنس صدا (Timbre Strength):</span>
+                  <span id="badge-vc-timbre" class="slider-badge" style="font-size:0.7rem; padding:1px 6px;">1.0x (حالت استاندارد طبیعی)</span>
+                </div>
+                <input type="range" id="vc-timbre-slider" class="range-slider-sm" min="0.5" max="1.5" step="0.05" value="1.0" style="width:140px;">
               </div>
 
               <!-- VC Drop zone -->

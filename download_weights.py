@@ -35,5 +35,15 @@ for filename, size_mb in FILES_TO_DOWNLOAD:
         print(f"Error downloading {filename}: {e}", flush=True)
         sys.exit(1)
 
+# Download OpenVoice V2 Converter for instant Voice-to-Voice Conversion
+print(f"\n--- Downloading: OpenVoice V2 Tone Color Converter (125 MB) ---", flush=True)
+try:
+    ov_dir = os.path.join("checkpoints", "openvoice_v2")
+    hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/config.json", local_dir=ov_dir)
+    hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/checkpoint.pth", local_dir=ov_dir)
+    print("OpenVoice V2 Converter downloaded successfully!", flush=True)
+except Exception as e:
+    print(f"Warning: OpenVoice download error: {e}", flush=True)
+
 total_time = time.time() - start_time
 print(f"\nALL FILES DOWNLOADED SUCCESSFULLY in {total_time:.1f}s!", flush=True)

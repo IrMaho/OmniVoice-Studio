@@ -295,58 +295,46 @@ function initVoiceConversionUI() {
   const transcriptTextarea = document.getElementById('vc-override-text');
   const transcribeStatus = document.getElementById('vc-transcribe-status');
 
-  const engineOmniRadio = document.getElementById('engine-omnivoice');
-  const engineDspRadio = document.getElementById('engine-dsp');
-  const labelEngineOmni = document.getElementById('label-engine-omnivoice');
-  const labelEngineDsp = document.getElementById('label-engine-dsp');
-  const dspControls = document.getElementById('vc-dsp-controls-grid');
+  const engineToneRadio = document.getElementById('engine-vc-tone');
+  const engineOmniRadio = document.getElementById('engine-vc-omnivoice');
+  const labelEngineTone = document.getElementById('label-vc-engine-tone');
+  const labelEngineOmni = document.getElementById('label-vc-engine-omnivoice');
+  const timbreStrengthRow = document.getElementById('vc-timbre-strength-row');
   const stripSettings = document.getElementById('strip-standard-settings');
-  const submitLabel = document.getElementById('btn-clone-label');
+  const submitLabel = document.getElementById('btn-generate-clone-label') || document.getElementById('btn-clone-label');
 
   const updateEngineUI = () => {
-    const isOmni = engineOmniRadio && engineOmniRadio.checked;
+    const isTone = engineToneRadio && engineToneRadio.checked;
+    if (labelEngineTone) {
+      labelEngineTone.style.borderColor = isTone ? 'var(--color-primary)' : 'var(--border-color)';
+      labelEngineTone.style.background = isTone ? 'rgba(99,102,241,0.16)' : 'var(--bg-input)';
+    }
     if (labelEngineOmni) {
-      labelEngineOmni.style.borderColor = isOmni ? 'var(--color-primary)' : 'var(--border-color)';
-      labelEngineOmni.style.background = isOmni ? 'rgba(99,102,241,0.15)' : 'var(--bg-input)';
+      labelEngineOmni.style.borderColor = !isTone ? 'var(--color-primary)' : 'var(--border-color)';
+      labelEngineOmni.style.background = !isTone ? 'rgba(99,102,241,0.16)' : 'var(--bg-input)';
     }
-    if (labelEngineDsp) {
-      labelEngineDsp.style.borderColor = !isOmni ? 'var(--color-primary)' : 'var(--border-color)';
-      labelEngineDsp.style.background = !isOmni ? 'rgba(99,102,241,0.15)' : 'var(--bg-input)';
-    }
-    if (dspControls) dspControls.style.display = isOmni ? 'none' : 'grid';
+    if (timbreStrengthRow) timbreStrengthRow.style.display = isTone ? 'flex' : 'none';
     if (stripSettings && activeInputType === 'voice_convert') {
-      stripSettings.style.display = isOmni ? 'grid' : 'none';
+      stripSettings.style.display = !isTone ? 'grid' : 'none';
     }
     if (submitLabel && activeInputType === 'voice_convert') {
-      submitLabel.textContent = isOmni
-        ? '✨ تبدیل صدا با هوش مصنوعی OmniVoice (کیفیت طبیعی استودیویی)'
-        : '🤖 تغییر فرکانس با فیلتر DSP';
+      submitLabel.textContent = isTone
+        ? '🌟 تبدیل مستقیم جنس صدا (حفظ ۱۰۰٪ لحن و ریتم بدون نیاز به متن)'
+        : '🔄 سنتز متنی با فلو مچینگ OmniVoice (بازخوانی با دیفیوژن)';
     }
   };
 
+  if (engineToneRadio) engineToneRadio.addEventListener('change', updateEngineUI);
   if (engineOmniRadio) engineOmniRadio.addEventListener('change', updateEngineUI);
-  if (engineDspRadio) engineDspRadio.addEventListener('change', updateEngineUI);
+  if (labelEngineTone) labelEngineTone.addEventListener('click', () => { if (engineToneRadio) { engineToneRadio.checked = true; updateEngineUI(); } });
   if (labelEngineOmni) labelEngineOmni.addEventListener('click', () => { if (engineOmniRadio) { engineOmniRadio.checked = true; updateEngineUI(); } });
-  if (labelEngineDsp) labelEngineDsp.addEventListener('click', () => { if (engineDspRadio) { engineDspRadio.checked = true; updateEngineUI(); } });
 
-  const pitchSlider = document.getElementById('vc-pitch-slider');
-  const pitchBadge = document.getElementById('vc-pitch-badge');
   const timbreSlider = document.getElementById('vc-timbre-slider');
-  const timbreBadge = document.getElementById('vc-timbre-badge');
-
-  if (pitchSlider && pitchBadge) {
-    pitchSlider.addEventListener('input', () => {
-      const v = parseFloat(pitchSlider.value);
-      if (v === 0) pitchBadge.textContent = '0 نیم‌پرده (خودکار)';
-      else if (v > 0) pitchBadge.textContent = `+${v} نیم‌پرده (زیرتر)`;
-      else pitchBadge.textContent = `${v} نیم‌پرده (بم‌تر)`;
-    });
-  }
-
+  const timbreBadge = document.getElementById('badge-vc-timbre');
   if (timbreSlider && timbreBadge) {
     timbreSlider.addEventListener('input', () => {
-      const pct = Math.round(parseFloat(timbreSlider.value) * 100);
-      timbreBadge.textContent = `${pct}% (تطابق تار صوتی)`;
+      const v = parseFloat(timbreSlider.value);
+      timbreBadge.textContent = `${v.toFixed(2)}x (${v < 0.8 ? 'نرم و سبک' : v > 1.2 ? 'شدید و نافذ' : 'استاندارد طبیعی'})`;
     });
   }
 
@@ -1058,7 +1046,8 @@ function initFormActions() {
       const formData = new FormData();
       formData.append('source_audio', vcSourceFile);
 
-      formData.append('convert_engine', 'omnivoice');
+      const selectedVcEngine = document.querySelector('input[name="vc_engine_choice"]:checked')?.value || 'tone_color';
+      formData.append('convert_engine', selectedVcEngine);
 
       const transcribedText = document.getElementById('vc-override-text')?.value?.trim() || '';
       formData.append('transcribed_text', transcribedText);

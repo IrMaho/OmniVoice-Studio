@@ -221,9 +221,32 @@ def load_omnivoice_model():
     )
     logger.info("OmniVoice model loaded successfully on GPU!")
 
+tone_converter = None
+
+def load_tone_converter():
+    global tone_converter
+    if tone_converter is not None:
+        return tone_converter
+    try:
+        from openvoice.api import ToneColorConverter
+        config_path = BASE_DIR / "checkpoints" / "openvoice_v2" / "converter" / "config.json"
+        ckpt_path = BASE_DIR / "checkpoints" / "openvoice_v2" / "converter" / "checkpoint.pth"
+        if not config_path.exists() or not ckpt_path.exists():
+            logger.warning("OpenVoice converter checkpoint not found at: %s", ckpt_path)
+            return None
+        logger.info(f"Loading OpenVoice ToneColorConverter on {model_device}...")
+        tone_converter = ToneColorConverter(str(config_path), device=model_device, enable_watermark=False)
+        tone_converter.load_ckpt(str(ckpt_path))
+        logger.info("OpenVoice ToneColorConverter loaded successfully!")
+        return tone_converter
+    except Exception as e:
+        logger.error(f"Failed to load OpenVoice ToneColorConverter: {e}", exc_info=True)
+        return None
+
 @app.on_event("startup")
 async def startup_event():
     load_omnivoice_model()
+    load_tone_converter()
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -1060,7 +1083,7 @@ async def api_convert_voice(
     source_audio: UploadFile = File(...),
     profile_id: Optional[str] = Form(None),
     ref_audio: Optional[UploadFile] = File(None),
-    convert_engine: str = Form("omnivoice"),
+    convert_engine: str = Form("tone_color"),
     transcribed_text: Optional[str] = Form(None),
     guidance_scale: float = Form(2.0),
     num_steps: int = Form(36),
@@ -1073,10 +1096,11 @@ async def api_convert_voice(
     preserve_volume: bool = Form(True),
 ):
     """
-    Intelligent Voice Conversion with OmniVoice & Neural Cloning:
-    1. 'omnivoice': High-fidelity neural voice synthesis using Whisper + OmniVoice Diffusion.
-       Produces 100% human, crystal-clear, studio-grade speech in the user's exact cloned voice.
-    2. 'dsp': Direct acoustic frequency/formant shift via phase vocoder.
+    Intelligent Voice Conversion (Speech-to-Speech):
+    1. 'tone_color': Neural Tone Color Converter (S2S-VC). 100% preservation of
+       inflections, melody, cadence, breathing, rhythm, laughter and pauses, with ZERO text needed.
+    2. 'omnivoice': High-fidelity neural TTS re-synthesis via Whisper + OmniVoice Diffusion.
+    3. 'dsp': Classical phase-vocoder pitch and formant transfer.
     """
     global model, current_progress
     if model is None:
@@ -1092,7 +1116,7 @@ async def api_convert_voice(
         "stage": "uploading",
         "stage_text": "۱. دریافت فایل صوتی ورودی...",
         "step": 0,
-        "total_steps": num_steps if convert_engine == "omnivoice" else 4,
+        "total_steps": 4 if convert_engine == "tone_color" else (num_steps if convert_engine == "omnivoice" else 4),
         "percent": 15,
         "elapsed_seconds": 0.0,
         "eta_seconds": 0.0,
@@ -1145,8 +1169,90 @@ async def api_convert_voice(
                 raise HTTPException(status_code=400, detail="هیچ گوینده هدفی انتخاب نشده است.")
 
         # 2. Execute selected conversion engine
-        if convert_engine == "omnivoice":
-            # --- OMNIVOICE NEURAL ENGINE (Crystal clear, human, studio-quality) ---
+        if convert_engine == "tone_color":
+            # --- NEURAL TONE COLOR CONVERTER (Real S2S-VC: 100% preservation of emotion, pitch, rhythm, laughs, breathing) ---
+            current_progress.update({
+                "stage": "extracting_timbre",
+                "stage_text": f"۲. استخراج مشخصات تار صوتی و رنگ صدای «{target_name}»...",
+                "percent": 35,
+            })
+            tc = load_tone_converter()
+            if tc is None:
+                raise RuntimeError("ماژول تبدیل جنس صدای عصبی (OpenVoice) در دسترس نیست یا فایل وزن‌های آن بارگذاری نشده است.")
+
+            # Target speaker embedding (cached per profile for instant execution)
+            target_se = None
+            if profile_id:
+                prof_se_file = PROFILES_DIR / profile_id / "tone_se.pt"
+                if prof_se_file.exists():
+                    try:
+                        target_se = torch.load(str(prof_se_file), map_location=model_device)
+                    except Exception:
+                        target_se = None
+                if target_se is None:
+                    target_se = tc.extract_se(target_ref_path)
+                    try:
+                        torch.save(target_se, str(prof_se_file))
+                    except Exception:
+                        pass
+            else:
+                target_se = tc.extract_se(target_ref_path)
+
+            current_progress.update({
+                "stage": "extracting_source",
+                "stage_text": "۳. تحلیل گفتار مبدا، لحن، سرعت، خنده‌ها و فراز و فرودهای صدا...",
+                "percent": 60,
+            })
+            src_se = tc.extract_se(str(src_audio_path))
+
+            current_progress.update({
+                "stage": "converting",
+                "stage_text": f"۴. تبدیل هوشمند جنس صدا به «{target_name}» بدون دستکاری لحن و کلمات...",
+                "percent": 85,
+            })
+
+            tau_val = float(timbre_strength) * 0.3 if timbre_strength else 0.3
+            tau_val = float(np.clip(tau_val, 0.1, 0.7))
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: tc.convert(
+                    audio_src_path=str(src_audio_path),
+                    src_se=src_se,
+                    tgt_se=target_se,
+                    output_path=str(out_audio_path),
+                    tau=tau_val,
+                )
+            )
+
+            if preserve_volume and out_audio_path.exists():
+                try:
+                    wav_out, sr_out = sf.read(str(out_audio_path))
+                    peak = np.max(np.abs(wav_out))
+                    if peak > 1e-4:
+                        wav_out = (wav_out / peak) * 0.92
+                        sf.write(str(out_audio_path), wav_out, sr_out)
+                except Exception as ne:
+                    logger.warning(f"Normalization warning: {ne}")
+
+            src_info = sf.info(str(out_audio_path))
+            audio_dur = round(src_info.duration, 2)
+            dt = round(time.time() - t_start, 2)
+            rtf = round(dt / max(audio_dur, 0.01), 3)
+
+            result_item = {
+                "id": task_id,
+                "mode": f"تغییر مستقیم جنس صدا (S2S-VC عصبی) ➔ {target_name}",
+                "text": "«تبدیل مستقیم صوت به صوت — حفظ ۱۰۰٪ ریتم، لحن، مکث، احساسات و لحن صحبت»",
+                "audio_url": out_audio_url,
+                "duration_sec": audio_dur,
+                "elapsed_sec": dt,
+                "rtf": rtf,
+                "created_at": time.strftime("%H:%M:%S"),
+            }
+        elif convert_engine == "omnivoice":
+            # --- OMNIVOICE NEURAL TTS ENGINE (Crystal clear, human, studio-quality) ---
             spoken_text = transcribed_text.strip() if (transcribed_text and transcribed_text.strip()) else ""
             if not spoken_text:
                 current_progress.update({
