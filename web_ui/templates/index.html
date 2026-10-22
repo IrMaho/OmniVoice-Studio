@@ -119,14 +119,23 @@
 
           <!-- MODE B: Custom Audio Upload & Precision Trimmer -->
           <div id="container-mode-custom" class="custom-audio-wrapper" style="display:none;">
+            <!-- Video Voice Cloner Quick Launcher Button -->
+            <div class="video-scrubber-quick-launcher">
+              <button type="button" id="btn-open-video-scrubber" class="btn-video-launcher" title="پخش فیلم، عقب جلو کردن و برش دقیق صدای کاراکتر">
+                <span>🎬</span>
+                <span>کلون صدا از فیلم و کلیپ (اسکرابر تصویری و برش هوشمند)</span>
+                <span class="badge-new-pulse">جدید</span>
+              </button>
+            </div>
+
             <!-- Drop zone (when no file loaded) -->
             <div id="drop-zone" class="compact-drop-zone">
-              <div class="drop-zone-icon">🎵</div>
+              <div class="drop-zone-icon">🎬 / 🎵</div>
               <div class="drop-zone-content">
-                <div class="drop-zone-title">فایل صوتی مرجع را اینجا بکشید یا برای انتخاب کلیک کنید</div>
-                <div class="drop-zone-subtitle">پشتیبانی از ویس تلگرام (OGG)، ضبط صدا، MP3، WAV (طول بهینه ۳ تا ۷ ثانیه)</div>
+                <div class="drop-zone-title">فایل فیلم یا صدای مرجع را اینجا بکشید یا برای انتخاب کلیک کنید</div>
+                <div class="drop-zone-subtitle">پشتیبانی از فیلم (MP4, MKV, MOV, WebM)، ویس تلگرام (OGG)، MP3، WAV (طول بهینه ۳ تا ۱۰ ثانیه)</div>
               </div>
-              <input type="file" id="audio-file-input" accept="audio/*,.ogg,.mp3,.wav,.m4a" style="display:none;">
+              <input type="file" id="audio-file-input" accept="audio/*,video/*,.ogg,.mp3,.wav,.m4a,.mp4,.mkv,.webm,.mov,.avi" style="display:none;">
             </div>
 
             <!-- Waveform & Trimmer Editor (when file loaded) -->
@@ -294,7 +303,7 @@
                   <div class="drop-zone-title">فایل صوتی را اینجا بکشید یا برای انتخاب کلیک کنید</div>
                   <div class="drop-zone-subtitle">پشتیبانی از ویس تلگرام (OGG)، ضبط صدا، سخنرانی، MP3، WAV، M4A</div>
                 </div>
-                <input type="file" id="vc-file-input" accept="audio/*,.ogg,.mp3,.wav,.m4a" style="display:none;">
+                <input type="file" id="vc-file-input" accept="audio/*,video/*,.ogg,.mp3,.wav,.m4a,.mp4,.mkv,.webm,.mov,.avi" style="display:none;">
               </div>
 
               <!-- VC Player & Info -->
@@ -664,8 +673,8 @@
                 <input type="text" id="prof-desc" class="form-input-sm" placeholder="مثلاً: ویس تلگرام بدون نویز">
               </div>
               <div class="form-group-compact" style="grid-column: 1 / -1;">
-                <label>فایل صوتی مرجع (Reference Audio):</label>
-                <input type="file" id="prof-audio-file" accept="audio/*,.ogg,.mp3,.wav,.m4a" class="form-input-sm">
+                <label>فایل صوتی یا ویدیویی مرجع (Reference Audio / Movie):</label>
+                <input type="file" id="prof-audio-file" accept="audio/*,video/*,.ogg,.mp3,.wav,.m4a,.mp4,.mkv,.webm,.mov,.avi" class="form-input-sm">
               </div>
               <div class="form-group-compact" style="grid-column: 1 / -1;">
                 <label>متن نمونه صدای خوش‌آمدگویی (Greeting):</label>
@@ -907,6 +916,167 @@
 
     </main>
 
+  <!-- ===============================================================
+       VIDEO VOICE CLONE SCRUBBER & TRIMMER MODAL
+       =============================================================== -->
+  <div id="video-scrubber-modal" class="modal-overlay" style="display:none;">
+    <div class="video-scrubber-card">
+      
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-icon-badge">🎬</span>
+          <div>
+            <h3 class="modal-title">استودیوی پیشرفته کلون صدا از فیلم و ویدیو (Video Voice Scrubber)</h3>
+            <p class="modal-sub">ویدیو را عقب و جلو کنید، صحبت کاراکتر یا بازیگر مورد نظرتان را بیابید و صدای شفاف آن را برای کلون استخراج نمایید.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-video-scrubber" class="btn-modal-close" title="بستن پنجره">✕</button>
+      </div>
+
+      <!-- Video Source Selection Strip -->
+      <div class="video-source-strip">
+        <div class="video-source-file-btn-wrap">
+          <button type="button" id="btn-select-video-file" class="btn-micro accent">
+            <span>📁 انتخاب فایل فیلم یا کلیپ</span>
+          </button>
+          <input type="file" id="video-file-picker" accept="video/*,.mp4,.mkv,.webm,.mov,.avi,.flv,.ts" style="display:none;">
+          <span id="video-file-name-chip" class="video-source-name-badge">فایلی انتخاب نشده</span>
+        </div>
+
+        <div class="video-source-path-wrap">
+          <input type="text" id="video-local-path-input" class="form-input-sm" placeholder="یا مسیر فایل در سیستم: C:\Users\...\movie.mp4">
+          <button type="button" id="btn-load-video-path" class="btn-micro secondary">بارگذاری مسیر</button>
+        </div>
+      </div>
+
+      <!-- Main Video Player Screen -->
+      <div class="video-viewport-wrapper">
+        <video id="video-scrubber-player" playsinline preload="auto"></video>
+        
+        <div class="video-overlay-badges">
+          <span id="video-timecode-display" class="v-badge timecode">00:00.0 / 00:00.0</span>
+          <span id="video-selection-duration-badge" class="v-badge duration">طول برش: 5.0s</span>
+        </div>
+
+        <div id="video-empty-placeholder" class="video-empty-state">
+          <div style="font-size:3rem; margin-bottom:0.5rem;">🎬</div>
+          <p style="font-weight:700; font-size:1rem; color:var(--text-main); margin-bottom:0.4rem;">فیلم یا کلیپ تصویری خود را بارگذاری کنید</p>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.85rem;">پشتیبانی از انواع فرمت‌های ویدیویی (MP4, MKV, WebM, MOV, AVI)</p>
+          <button type="button" onclick="document.getElementById('video-file-picker').click()" class="btn-compact-primary">
+            <span>📁 باز کردن فایل فیلم</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Timeline & Navigation Scrubber ("فیلم عقب جلو کنم") -->
+      <div class="video-timeline-controls">
+        <!-- Range track with visual selection highlight -->
+        <div class="video-slider-container">
+          <input type="range" id="video-seek-slider" min="0" max="100" step="0.01" value="0" class="video-range-slider">
+          <div id="video-selection-highlight-bar" class="video-selection-highlight"></div>
+        </div>
+
+        <!-- Frame-Accurate Navigation Buttons -->
+        <div class="video-navigation-bar">
+          <div class="nav-step-group">
+            <button type="button" id="btn-v-back-10s" class="btn-v-step" title="۱۰ ثانیه به عقب">⏪ 10s-</button>
+            <button type="button" id="btn-v-back-1s" class="btn-v-step" title="۱ ثانیه به عقب">◀ 1s-</button>
+            <button type="button" id="btn-v-back-frame" class="btn-v-step" title="یک فریم به عقب (۰.۱ ثانیه)">⏮ 0.1s-</button>
+          </div>
+
+          <button type="button" id="btn-v-play-pause" class="btn-v-play">
+            <span id="v-play-icon">▶️</span>
+            <span id="v-play-label">پخش</span>
+          </button>
+
+          <div class="nav-step-group">
+            <button type="button" id="btn-v-fwd-frame" class="btn-v-step" title="یک فریم به جلو (۰.۱ ثانیه)">0.1s+ ⏭</button>
+            <button type="button" id="btn-v-fwd-1s" class="btn-v-step" title="۱ ثانیه به جلو">1s+ ▶</button>
+            <button type="button" id="btn-v-fwd-10s" class="btn-v-step" title="۱۰ ثانیه به جلو">10s+ ⏩</button>
+          </div>
+
+          <div class="video-speed-selector-wrap">
+            <label>سرعت:</label>
+            <select id="video-playback-rate-select" class="form-select-sm" style="width:72px;">
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1.0" selected>1.0x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Set In / Set Out Marker Buttons -->
+        <div class="video-inout-marker-bar">
+          <div class="inout-item">
+            <button type="button" id="btn-set-video-in" class="btn-mark-point in" title="تعیین لحظه فعلی ویدیو به عنوان نقطه شروع کلام کاراکتر">
+              <span>⏱️ شروع دیالوگ [از زمان فعلی]</span>
+            </button>
+            <div class="inout-input-wrap">
+              <span>ثانیه:</span>
+              <input type="number" id="video-in-time-input" step="0.1" min="0" value="0.0" class="inout-time-input">
+            </div>
+          </div>
+
+          <button type="button" id="btn-preview-video-segment" class="btn-preview-segment" title="پخش آزمایشی فقط بخش انتخابی دیالوگ">
+            <span>🔁</span>
+            <span>تست بخش انتخابی</span>
+          </button>
+
+          <div class="inout-item">
+            <button type="button" id="btn-set-video-out" class="btn-mark-point out" title="تعیین لحظه فعلی ویدیو به عنوان نقطه پایان کلام کاراکتر">
+              <span>⏱️ پایان دیالوگ [از زمان فعلی]</span>
+            </button>
+            <div class="inout-input-wrap">
+              <span>ثانیه:</span>
+              <input type="number" id="video-out-time-input" step="0.1" min="0" value="5.0" class="inout-time-input">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enhancement & Whisper Options -->
+      <div class="video-options-row">
+        <label class="compact-checkbox-label" title="کاهش نویز محیطی و افکت‌های پس‌زمینه فیلم برای ایزوله‌سازی بهتر تار صوتی">
+          <input type="checkbox" id="chk-video-denoise" checked>
+          <span>✨ حذف نویز و شفاف‌سازی صدای دیالوگ (Vocal Isolation & Denoise)</span>
+        </label>
+
+        <label class="compact-checkbox-label" title="استخراج خودکار متن کلام کاراکتر با مدل Whisper و پر کردن خودکار فیلد متن مرجع">
+          <input type="checkbox" id="chk-video-auto-transcribe" checked>
+          <span>🎙️ استخراج خودکار متن دیالوگ با Whisper</span>
+        </label>
+      </div>
+
+      <!-- Action Choice: Direct Clone vs Save as Permanent Profile -->
+      <div class="video-target-mode-row">
+        <label class="compact-checkbox-label">
+          <input type="checkbox" id="chk-video-save-profile">
+          <span>ذخیره مستقیم در «بانک گویندگان من» به عنوان پروفایل دائمی (مثلاً جومونگ)</span>
+        </label>
+
+        <div id="video-profile-inputs" style="display:none; align-items:center; gap:0.5rem; flex:1;">
+          <input type="text" id="video-profile-name-input" class="form-input-sm" placeholder="نام گوینده (مثلاً: جومونگ، علیرضا باشکندی)...">
+          <input type="text" id="video-profile-desc-input" class="form-input-sm" placeholder="توضیحات (اختیاری: صدای جومونگ در فیلم)">
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="video-modal-footer">
+        <span id="video-extract-status" class="video-status-text">بازه ۳ تا ۱۰ ثانیه واضح‌ترین بخش صدای کاراکتر را انتخاب نمایید.</span>
+        
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <button type="button" id="btn-cancel-video-scrubber" class="btn-micro secondary">انصراف</button>
+          <button type="button" id="btn-extract-and-clone-video" class="btn-glow-primary">
+            <span>✂️</span>
+            <span id="btn-extract-label">استخراج صدا و کلون</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- JavaScript Modules -->

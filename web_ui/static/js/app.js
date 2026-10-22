@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initProfilesManager();
   initFormActions();
   initStoryStudio();
+  initVideoScrubber();
   loadProfiles();
   loadHistory();
 });
@@ -158,6 +159,14 @@ function initTrimmer() {
 }
 
 function handleAudioUpload(file) {
+  if (!file) return;
+  const isVideo = (file.type && file.type.startsWith('video/')) || /\.(mp4|mkv|webm|mov|avi|flv|ts|m4v)$/i.test(file.name);
+  if (isVideo) {
+    if (window.openVideoScrubber) {
+      window.openVideoScrubber(file);
+      return;
+    }
+  }
   if (trimmer) trimmer.loadAudioFile(file);
 }
 
@@ -349,6 +358,13 @@ function initVoiceConversionUI() {
 
   const handleFile = (file) => {
     if (!file) return;
+    const isVideo = (file.type && file.type.startsWith('video/')) || /\.(mp4|mkv|webm|mov|avi|flv|ts|m4v)$/i.test(file.name);
+    if (isVideo) {
+      if (window.openVideoScrubber) {
+        window.openVideoScrubber(file);
+        return;
+      }
+    }
     vcSourceFile = file;
     if (fileNameEl) fileNameEl.textContent = file.name;
     const url = URL.createObjectURL(file);
@@ -1975,10 +1991,63 @@ function renderStoryDialogues() {
           </div>
         </div>
 
+        <!-- In-Line Add Dialogue Button at Bottom of this Card for UX -->
+        <div class="dialogue-card-inline-add">
+          <button type="button" class="btn-inline-add-dialogue" onclick="insertDialogueAfter(${idx})" title="افزودن دیالوگ جدید دقیقاً بعد از این خط">
+            <span>➕</span>
+            <span>افزودن دیالوگ جدید بعد از این خط</span>
+          </button>
+        </div>
+
       </div>
     `;
   }).join('');
 }
+
+window.insertDialogueAfter = function(idx) {
+  const currentDlg = storyDialogues[idx];
+  let nextSpeaker = getDefaultSpeakerId();
+  if (currentDlg && cachedProfiles && cachedProfiles.length > 0) {
+    if (cachedProfiles.length >= 2) {
+      nextSpeaker = (currentDlg.speaker_id === cachedProfiles[0].id) ? cachedProfiles[1].id : cachedProfiles[0].id;
+    } else if (currentDlg.speaker_id === cachedProfiles[0].id) {
+      nextSpeaker = 'mms';
+    } else {
+      nextSpeaker = cachedProfiles[0].id;
+    }
+  }
+
+  const globalPauseSelect = document.getElementById('story-global-pause-select');
+  const defaultPause = globalPauseSelect ? parseFloat(globalPauseSelect.value) : 0.0;
+  const globalStepsSelect = document.getElementById('story-global-steps-select');
+  const defaultSteps = globalStepsSelect ? parseInt(globalStepsSelect.value) : 24;
+
+  const newDlg = {
+    id: 'dlg_' + Math.random().toString(36).substring(2, 9),
+    speaker_id: nextSpeaker,
+    text: '',
+    repeat_count: 1,
+    pause_after: defaultPause,
+    speed: 1.0,
+    pitch_shift: 0.0,
+    num_steps: defaultSteps,
+    guidance_scale: 2.0,
+    preview_url: null,
+    show_tweaks: false,
+  };
+
+  storyDialogues.splice(idx + 1, 0, newDlg);
+  renderStoryDialogues();
+
+  setTimeout(() => {
+    const newCard = document.getElementById(`card-${newDlg.id}`);
+    if (newCard) {
+      newCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const ta = document.getElementById(`text-${newDlg.id}`);
+      if (ta) ta.focus();
+    }
+  }, 60);
+};
 
 // ---------------------------------------------------------------------------
 // Story Dialogue Manipulation Handlers
@@ -2291,4 +2360,386 @@ window.seekMasterAudio = function(sec) {
     player.play().catch(() => {});
   }
 };
+
+// ---------------------------------------------------------------------------
+// 10. Video Voice Scrubber & Trimmer Module
+// ---------------------------------------------------------------------------
+let currentVideoFile = null;
+let currentVideoPath = null;
+let videoInTime = 0.0;
+let videoOutTime = 5.0;
+let isPreviewingVideoSegment = false;
+
+function initVideoScrubber() {
+  const modal = document.getElementById('video-scrubber-modal');
+  const btnOpen = document.getElementById('btn-open-video-scrubber');
+  const btnClose = document.getElementById('btn-close-video-scrubber');
+  const btnCancel = document.getElementById('btn-cancel-video-scrubber');
+  const filePicker = document.getElementById('video-file-picker');
+  const btnSelectFile = document.getElementById('btn-select-video-file');
+  const fileNameChip = document.getElementById('video-file-name-chip');
+  const pathInput = document.getElementById('video-local-path-input');
+  const btnLoadPath = document.getElementById('btn-load-video-path');
+  const videoPlayer = document.getElementById('video-scrubber-player');
+  const emptyPlaceholder = document.getElementById('video-empty-placeholder');
+  const seekSlider = document.getElementById('video-seek-slider');
+  const highlightBar = document.getElementById('video-selection-highlight-bar');
+  const timecodeDisplay = document.getElementById('video-timecode-display');
+  const durationBadge = document.getElementById('video-selection-duration-badge');
+
+  // Navigation buttons
+  const btnBack10 = document.getElementById('btn-v-back-10s');
+  const btnBack1 = document.getElementById('btn-v-back-1s');
+  const btnBackFrame = document.getElementById('btn-v-back-frame');
+  const btnPlayPause = document.getElementById('btn-v-play-pause');
+  const playIcon = document.getElementById('v-play-icon');
+  const playLabel = document.getElementById('v-play-label');
+  const btnFwdFrame = document.getElementById('btn-v-fwd-frame');
+  const btnFwd1 = document.getElementById('btn-v-fwd-1s');
+  const btnFwd10 = document.getElementById('btn-v-fwd-10s');
+  const rateSelect = document.getElementById('video-playback-rate-select');
+
+  // Markers
+  const btnSetIn = document.getElementById('btn-set-video-in');
+  const btnSetOut = document.getElementById('btn-set-video-out');
+  const inInput = document.getElementById('video-in-time-input');
+  const outInput = document.getElementById('video-out-time-input');
+  const btnPreviewSeg = document.getElementById('btn-preview-video-segment');
+
+  // Target Profile Toggle
+  const chkSaveProfile = document.getElementById('chk-video-save-profile');
+  const profileInputs = document.getElementById('video-profile-inputs');
+  const profileNameInput = document.getElementById('video-profile-name-input');
+  const profileDescInput = document.getElementById('video-profile-desc-input');
+
+  // Extract Action
+  const btnExtract = document.getElementById('btn-extract-and-clone-video');
+  const extractLabel = document.getElementById('btn-extract-label');
+  const extractStatus = document.getElementById('video-extract-status');
+
+  if (!modal || !videoPlayer) return;
+
+  function formatTime(sec) {
+    if (isNaN(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.floor((sec % 1) * 10);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+  }
+
+  function updateVisualMarkers() {
+    if (!videoPlayer.duration || isNaN(videoPlayer.duration)) return;
+    const dur = videoPlayer.duration;
+    const leftPct = (videoInTime / dur) * 100;
+    const widthPct = Math.max(0.5, ((videoOutTime - videoInTime) / dur) * 100);
+
+    if (highlightBar) {
+      highlightBar.style.left = `${leftPct}%`;
+      highlightBar.style.width = `${widthPct}%`;
+    }
+
+    const segDur = Math.max(0.1, videoOutTime - videoInTime);
+    if (durationBadge) {
+      durationBadge.textContent = `طول برش: ${segDur.toFixed(1)}s`;
+      if (segDur > 15) {
+        durationBadge.style.background = 'rgba(239, 68, 68, 0.85)';
+        durationBadge.style.borderColor = '#ef4444';
+        durationBadge.title = 'طول برش بیشتر از ۱۵ ثانیه است؛ هوش مصنوعی آن را به ۱۲ ثانیه کوتاه می‌کند.';
+      } else {
+        durationBadge.style.background = 'rgba(16, 185, 129, 0.85)';
+        durationBadge.style.borderColor = '#10b981';
+        durationBadge.title = 'طول ایده‌آل دیالوگ برای کلون دقیق';
+      }
+    }
+
+    if (inInput) inInput.value = videoInTime.toFixed(1);
+    if (outInput) outInput.value = videoOutTime.toFixed(1);
+  }
+
+  window.openVideoScrubber = function(fileOrPath = null) {
+    modal.style.display = 'flex';
+    if (fileOrPath instanceof File) {
+      loadVideoFromFile(fileOrPath);
+    } else if (typeof fileOrPath === 'string' && fileOrPath.trim()) {
+      loadVideoFromPath(fileOrPath.trim());
+    }
+  };
+
+  function closeVideoScrubber() {
+    videoPlayer.pause();
+    modal.style.display = 'none';
+  }
+
+  if (btnOpen) btnOpen.addEventListener('click', () => window.openVideoScrubber());
+  if (btnClose) btnClose.addEventListener('click', closeVideoScrubber);
+  if (btnCancel) btnCancel.addEventListener('click', closeVideoScrubber);
+
+  // File Picker
+  if (btnSelectFile && filePicker) {
+    btnSelectFile.addEventListener('click', () => filePicker.click());
+    filePicker.addEventListener('change', (e) => {
+      if (e.target.files.length) loadVideoFromFile(e.target.files[0]);
+    });
+  }
+
+  // Path Loader
+  if (btnLoadPath && pathInput) {
+    btnLoadPath.addEventListener('click', () => {
+      const p = pathInput.value.trim();
+      if (p) loadVideoFromPath(p);
+      else alert('لطفاً مسیر فایل ویدیویی را وارد کنید.');
+    });
+    pathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') btnLoadPath.click();
+    });
+  }
+
+  function loadVideoFromFile(file) {
+    currentVideoFile = file;
+    currentVideoPath = null;
+    if (fileNameChip) fileNameChip.textContent = file.name;
+    if (emptyPlaceholder) emptyPlaceholder.style.display = 'none';
+
+    const objUrl = URL.createObjectURL(file);
+    videoPlayer.src = objUrl;
+    videoPlayer.load();
+  }
+
+  function loadVideoFromPath(p) {
+    currentVideoFile = null;
+    currentVideoPath = p;
+    const name = p.split(/[\\/]/).pop();
+    if (fileNameChip) fileNameChip.textContent = name;
+    if (emptyPlaceholder) emptyPlaceholder.style.display = 'none';
+
+    videoPlayer.src = `/api/video/stream?path=${encodeURIComponent(p)}`;
+    videoPlayer.load();
+  }
+
+  videoPlayer.addEventListener('loadedmetadata', () => {
+    const total = videoPlayer.duration;
+    videoInTime = 0.0;
+    videoOutTime = Math.min(5.0, total);
+    updateVisualMarkers();
+    if (timecodeDisplay) {
+      timecodeDisplay.textContent = `${formatTime(0)} / ${formatTime(total)}`;
+    }
+    if (seekSlider) {
+      seekSlider.value = 0;
+    }
+  });
+
+  videoPlayer.addEventListener('timeupdate', () => {
+    const cur = videoPlayer.currentTime;
+    const total = videoPlayer.duration || 1;
+    if (timecodeDisplay) {
+      timecodeDisplay.textContent = `${formatTime(cur)} / ${formatTime(total)}`;
+    }
+    if (seekSlider && !seekSlider.matches(':active')) {
+      seekSlider.value = (cur / total) * 100;
+    }
+
+    if (isPreviewingVideoSegment) {
+      if (cur >= videoOutTime || cur < videoInTime) {
+        videoPlayer.currentTime = videoInTime;
+        videoPlayer.play();
+      }
+    }
+  });
+
+  if (seekSlider) {
+    seekSlider.addEventListener('input', () => {
+      if (!videoPlayer.duration) return;
+      const targetTime = (parseFloat(seekSlider.value) / 100) * videoPlayer.duration;
+      videoPlayer.currentTime = targetTime;
+    });
+  }
+
+  function togglePlay() {
+    isPreviewingVideoSegment = false;
+    if (videoPlayer.paused) {
+      videoPlayer.play();
+      if (playIcon) playIcon.textContent = '⏸️';
+      if (playLabel) playLabel.textContent = 'توقف';
+    } else {
+      videoPlayer.pause();
+      if (playIcon) playIcon.textContent = '▶️';
+      if (playLabel) playLabel.textContent = 'پخش';
+    }
+  }
+
+  if (btnPlayPause) btnPlayPause.addEventListener('click', togglePlay);
+  videoPlayer.addEventListener('play', () => {
+    if (playIcon) playIcon.textContent = '⏸️';
+    if (playLabel) playLabel.textContent = 'توقف';
+  });
+  videoPlayer.addEventListener('pause', () => {
+    if (playIcon) playIcon.textContent = '▶️';
+    if (playLabel) playLabel.textContent = 'پخش';
+  });
+
+  function skipVideo(delta) {
+    isPreviewingVideoSegment = false;
+    if (!videoPlayer.duration) return;
+    videoPlayer.currentTime = Math.max(0, Math.min(videoPlayer.duration, videoPlayer.currentTime + delta));
+  }
+
+  if (btnBack10) btnBack10.addEventListener('click', () => skipVideo(-10));
+  if (btnBack1) btnBack1.addEventListener('click', () => skipVideo(-1));
+  if (btnBackFrame) btnBackFrame.addEventListener('click', () => skipVideo(-0.1));
+  if (btnFwdFrame) btnFwdFrame.addEventListener('click', () => skipVideo(0.1));
+  if (btnFwd1) btnFwd1.addEventListener('click', () => skipVideo(1));
+  if (btnFwd10) btnFwd10.addEventListener('click', () => skipVideo(10));
+
+  if (rateSelect) {
+    rateSelect.addEventListener('change', () => {
+      videoPlayer.playbackRate = parseFloat(rateSelect.value) || 1.0;
+    });
+  }
+
+  // Mark In & Out
+  if (btnSetIn) {
+    btnSetIn.addEventListener('click', () => {
+      videoInTime = Math.max(0, videoPlayer.currentTime);
+      if (videoOutTime <= videoInTime) {
+        videoOutTime = Math.min(videoPlayer.duration || videoInTime + 5, videoInTime + 5);
+      }
+      updateVisualMarkers();
+    });
+  }
+
+  if (btnSetOut) {
+    btnSetOut.addEventListener('click', () => {
+      videoOutTime = Math.min(videoPlayer.duration || videoPlayer.currentTime, Math.max(videoInTime + 0.3, videoPlayer.currentTime));
+      updateVisualMarkers();
+    });
+  }
+
+  if (inInput) {
+    inInput.addEventListener('change', () => {
+      videoInTime = Math.max(0, parseFloat(inInput.value) || 0);
+      updateVisualMarkers();
+    });
+  }
+
+  if (outInput) {
+    outInput.addEventListener('change', () => {
+      videoOutTime = Math.max(videoInTime + 0.3, parseFloat(outInput.value) || 5);
+      updateVisualMarkers();
+    });
+  }
+
+  // Preview segment
+  if (btnPreviewSeg) {
+    btnPreviewSeg.addEventListener('click', () => {
+      isPreviewingVideoSegment = true;
+      videoPlayer.currentTime = videoInTime;
+      videoPlayer.play();
+    });
+  }
+
+  // Toggle Save as Profile
+  if (chkSaveProfile && profileInputs) {
+    chkSaveProfile.addEventListener('change', () => {
+      profileInputs.style.display = chkSaveProfile.checked ? 'flex' : 'none';
+    });
+  }
+
+  // Extract & Clone Action
+  if (btnExtract) {
+    btnExtract.addEventListener('click', async () => {
+      if (!currentVideoFile && !currentVideoPath) {
+        alert('لطفاً ابتدا یک فایل فیلم انتخاب کرده یا مسیر آن را وارد نمایید.');
+        return;
+      }
+
+      const segDur = videoOutTime - videoInTime;
+      if (segDur <= 0.2) {
+        alert('طول بخش انتخابی دیالوگ بسیار کوتاه است. لطفاً حداقل ۱ تا ۱۰ ثانیه انتخاب کنید.');
+        return;
+      }
+
+      btnExtract.disabled = true;
+      extractLabel.textContent = '⏳ در حال استخراج و تحلیل صدا...';
+      if (extractStatus) extractStatus.textContent = 'در حال استخراج صوتی با کیفیت ۲۴kHz و اجرای مدل Whisper...';
+
+      try {
+        const fd = new FormData();
+        if (currentVideoFile) {
+          fd.append('video', currentVideoFile);
+        } else if (currentVideoPath) {
+          fd.append('video_path', currentVideoPath);
+        }
+
+        fd.append('start_time', videoInTime.toFixed(3));
+        fd.append('end_time', videoOutTime.toFixed(3));
+        fd.append('denoise', document.getElementById('chk-video-denoise')?.checked ?? true);
+        fd.append('auto_transcribe', document.getElementById('chk-video-auto-transcribe')?.checked ?? true);
+
+        const saveProfile = chkSaveProfile?.checked ?? false;
+        fd.append('save_as_profile', saveProfile);
+        if (saveProfile) {
+          fd.append('profile_name', profileNameInput?.value?.trim() || 'کاراکتر فیلم');
+          fd.append('profile_desc', profileDescInput?.value?.trim() || 'استخراج‌شده از فیلم');
+        }
+
+        const res = await fetch('/api/video/extract-segment', {
+          method: 'POST',
+          body: fd,
+        });
+        const data = await res.json();
+
+        if (data.success && data.audio_url) {
+          closeVideoScrubber();
+
+          if (saveProfile && data.profile) {
+            await loadSavedProfiles();
+            // Switch to saved profile mode
+            const btnProfile = document.getElementById('btn-mode-profile');
+            if (btnProfile) btnProfile.click();
+            const profSelect = document.getElementById('select-saved-profile');
+            if (profSelect) {
+              profSelect.value = data.profile.id;
+              profSelect.dispatchEvent(new Event('change'));
+            }
+            alert(`🎉 صدای گوینده «${data.profile.name}» با موفقیت از فیلم استخراج و در بانک گویندگان ذخیره شد!`);
+          } else {
+            // Switch to Custom Clone Mode
+            const btnCustom = document.getElementById('btn-mode-custom');
+            if (btnCustom) btnCustom.click();
+
+            // Load extracted WAV into trimmer
+            const audioRes = await fetch(data.audio_url);
+            const audioBlob = await audioRes.blob();
+            const audioFile = new File([audioBlob], `video_voice_${data.duration_sec}s.wav`, { type: 'audio/wav' });
+
+            if (trimmer) {
+              await trimmer.loadAudioFile(audioFile);
+              trimmer.setSelection(0, data.duration_sec);
+              document.getElementById('drop-zone').style.display = 'none';
+              document.getElementById('trimmer-wrapper').style.display = 'block';
+            }
+
+            // Fill ref text with transcription
+            const refTextInput = document.getElementById('clone-ref-text');
+            if (refTextInput && data.transcription) {
+              refTextInput.value = data.transcription;
+            }
+
+            alert(`🎬 صدای کاراکتر با موفقیت از فیلم استخراج شد (${data.duration_sec} ثانیه) و در پنل کلون قرار گرفت!\n\nمتن شناسایی‌شده: «${data.transcription || '---'}»`);
+          }
+        } else {
+          alert('خطا در استخراج صدای ویدیو: ' + (data.error || 'ناشناخته'));
+        }
+      } catch (err) {
+        alert('خطا در اتصال به سرور جهت استخراج صدا: ' + err.message);
+      } finally {
+        btnExtract.disabled = false;
+        extractLabel.textContent = 'استخراج صدا و کلون';
+        if (extractStatus) extractStatus.textContent = 'بازه ۳ تا ۱۰ ثانیه واضح‌ترین بخش صدای کاراکتر را انتخاب نمایید.';
+      }
+    });
+  }
+}
+
 

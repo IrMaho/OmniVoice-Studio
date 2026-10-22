@@ -296,6 +296,190 @@ async def api_transcribe(audio: UploadFile = File(...)):
             except Exception:
                 pass
 
+def extract_audio_from_video(
+    video_source_path: Path,
+    output_audio_path: Path,
+    start_time: float = 0.0,
+    duration: float = 5.0,
+    denoise: bool = True,
+    sample_rate: int = 24000,
+) -> Tuple[bool, str]:
+    """
+    Extracts a high-precision audio slice from a video file (MP4, MKV, WebM, MOV, AVI, etc.)
+    using FFmpeg, with optional dialogue isolation / noise reduction and broadcast loudness normalization.
+    """
+    import subprocess
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{start_time:.3f}",
+        "-i", str(video_source_path),
+        "-t", f"{duration:.3f}",
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", str(sample_rate),
+        "-ac", "1",
+    ]
+    if denoise:
+        cmd.extend(["-af", "afftdn=nf=-20,loudnorm=I=-16:TP=-1.5:LRA=11"])
+    cmd.append(str(output_audio_path))
+
+    logger.info(f"Running video audio extraction: {' '.join(cmd)}")
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        if proc.returncode != 0:
+            logger.warning(f"FFmpeg extraction with filters failed, retrying basic: {proc.stderr[:180]}")
+            fallback_cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{start_time:.3f}",
+                "-i", str(video_source_path),
+                "-t", f"{duration:.3f}",
+                "-vn",
+                "-acodec", "pcm_s16le",
+                "-ar", str(sample_rate),
+                "-ac", "1",
+                str(output_audio_path)
+            ]
+            fallback_proc = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=90)
+            if fallback_proc.returncode != 0:
+                return False, fallback_proc.stderr
+        return True, ""
+    except Exception as e:
+        logger.error(f"FFmpeg execution error: {e}", exc_info=True)
+        return False, str(e)
+
+@app.get("/api/video/stream")
+async def api_video_stream(path: str):
+    """Streams a local video file with HTTP 206 Partial Content range support for smooth scrubbing."""
+    p = Path(path).resolve()
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="فایل ویدیو در این مسیر یافت نشد.")
+    return FileResponse(str(p), media_type="video/mp4")
+
+@app.post("/api/video/extract-segment")
+async def api_video_extract_segment(
+    video: Optional[UploadFile] = File(None),
+    video_path: Optional[str] = Form(None),
+    start_time: float = Form(0.0),
+    end_time: float = Form(5.0),
+    denoise: bool = Form(True),
+    auto_transcribe: bool = Form(True),
+    save_as_profile: bool = Form(False),
+    profile_name: Optional[str] = Form(None),
+    profile_desc: Optional[str] = Form(""),
+):
+    """
+    Extracts dialogue segment from movie/video file, applies vocal polish, transcribes with Whisper,
+    and optionally registers directly into the Voice Profiles bank.
+    """
+    global model, current_progress
+    if model is None:
+        load_omnivoice_model()
+
+    task_id = uuid.uuid4().hex[:8]
+    temp_vid_path = None
+    input_video_file = None
+
+    try:
+        if video and video.filename:
+            temp_vid_path = OUTPUTS_DIR / f"temp_vid_{task_id}_{video.filename}"
+            content = await video.read()
+            with open(temp_vid_path, "wb") as f:
+                f.write(content)
+            input_video_file = temp_vid_path
+        elif video_path and video_path.strip():
+            local_p = Path(video_path.strip()).resolve()
+            if not local_p.exists():
+                raise HTTPException(status_code=404, detail=f"فایل ویدیو در مسیر «{video_path}» یافت نشد.")
+            input_video_file = local_p
+        else:
+            raise HTTPException(status_code=400, detail="لطفاً فایل ویدیو را انتخاب کرده یا مسیر آن را وارد نمایید.")
+
+        st = max(0.0, float(start_time or 0.0))
+        et = max(st + 0.3, float(end_time or (st + 5.0)))
+        dur = min(15.0, et - st)
+
+        out_wav_name = f"extracted_video_{task_id}.wav"
+        out_wav_path = OUTPUTS_DIR / out_wav_name
+        out_wav_url = f"/outputs/{out_wav_name}"
+
+        success, err = extract_audio_from_video(
+            video_source_path=input_video_file,
+            output_audio_path=out_wav_path,
+            start_time=st,
+            duration=dur,
+            denoise=bool(denoise),
+            sample_rate=24000,
+        )
+
+        if not success or not out_wav_path.exists():
+            raise RuntimeError(f"خطا در استخراج صدای ویدیو: {err}")
+
+        info = sf.info(str(out_wav_path))
+        actual_dur = round(info.duration, 2)
+
+        transcription = ""
+        if auto_transcribe:
+            try:
+                transcription = model.transcribe(str(out_wav_path))
+                logger.info(f"Video dialogue auto-transcribed: {transcription[:80]}...")
+            except Exception as te:
+                logger.warning(f"Whisper transcription failed: {te}")
+                transcription = ""
+
+        prof_record = None
+        if save_as_profile and profile_name and profile_name.strip():
+            prof_id = uuid.uuid4().hex[:8]
+            prof_folder = PROFILES_DIR / prof_id
+            prof_folder.mkdir(parents=True, exist_ok=True)
+
+            shutil.copyfile(str(out_wav_path), str(prof_folder / "reference.wav"))
+            shutil.copyfile(str(out_wav_path), str(prof_folder / "preview.wav"))
+
+            clean_ref_text = transcription.strip() if transcription.strip() else None
+            prompt = model.create_voice_clone_prompt(
+                ref_audio=str(out_wav_path),
+                ref_text=clean_ref_text,
+                preprocess_prompt=True,
+            )
+            prompt.save(str(prof_folder / "prompt.pt"))
+            PROFILES_PROMPT_CACHE[prof_id] = prompt
+
+            prof_record = {
+                "id": prof_id,
+                "name": profile_name.strip(),
+                "description": profile_desc.strip() if profile_desc else "استخراج‌شده از فیلم / ویدیو",
+                "preview_url": f"/profiles/{prof_id}/preview.wav",
+                "reference_url": f"/profiles/{prof_id}/reference.wav",
+                "guidance_scale": 2.0,
+                "num_steps": 36,
+                "greeting_text": transcription if transcription else "سلام، این صدای شبیه‌سازی‌شده‌ی من از فیلم است.",
+                "ref_text": prompt.ref_text,
+                "preview_duration_sec": actual_dur,
+                "created_at": time.strftime("%Y-%m-%d %H:%M"),
+            }
+            profiles = load_profiles_db()
+            profiles.insert(0, prof_record)
+            save_profiles_db(profiles)
+            logger.info(f"Video voice profile registered: {profile_name} ({prof_id})")
+
+        return {
+            "success": True,
+            "audio_url": out_wav_url,
+            "duration_sec": actual_dur,
+            "transcription": transcription,
+            "profile": prof_record,
+        }
+
+    except Exception as e:
+        logger.error(f"Video extraction error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        if temp_vid_path and temp_vid_path.exists():
+            try:
+                temp_vid_path.unlink()
+            except Exception:
+                pass
+
 @app.post("/api/clean-memory")
 async def api_clean_memory():
     import gc
