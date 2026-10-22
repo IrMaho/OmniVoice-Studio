@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniVoice AI Studio | استودیوی پیشرفته شبیه‌سازی و طراحی صدا</title>
+  
+  <link rel="stylesheet" href="/static/css/variables.css">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="studio-body">
+
+  <div class="studio-app">
+
+    <!-- 1. Sleek Ultra-Compact Header (52px) -->
+    <header class="studio-navbar">
+      <!-- Right: Brand -->
+      <div class="brand-group">
+        <div class="brand-badge-logo">🎙️</div>
+        <div class="brand-text">
+          <span class="brand-name">OmniVoice <span class="brand-tag">Studio</span></span>
+          <span class="brand-sub">شبیه‌سازی صدا با دیفیوژن و شتاب GPU</span>
+        </div>
+      </div>
+
+      <!-- Center: Segmented Navigation Tabs -->
+      <nav class="nav-segmented">
+        <button id="tab-btn-clone" class="nav-tab active" title="شبیه‌سازی و خوانش فوری صدا">
+          <span>🎙️</span>
+          <span>کلون و خوانش</span>
+        </button>
+        <button id="tab-btn-profiles" class="nav-tab" title="مدیریت بانک گویندگان من">
+          <span>🎭</span>
+          <span>بانک گویندگان</span>
+        </button>
+        <button id="tab-btn-design" class="nav-tab" title="طراحی صدا بر اساس سن، جنسیت و لحن">
+          <span>🎨</span>
+          <span>طراحی صدا</span>
+        </button>
+        <button id="tab-btn-history" class="nav-tab" title="مشاهده فایل‌های تولید شده">
+          <span>📜</span>
+          <span>تاریخچه</span>
+        </button>
+      </nav>
+
+      <!-- Left: Telemetry & Theme Switch -->
+      <div class="header-actions">
+        <div class="telemetry-pill" title="پردازش مستقیم روی کارت گرافیک فعال است">
+          <span class="pulse-indicator"></span>
+          <span id="gpu-name-badge">NVIDIA RTX 4060</span>
+          <span class="telemetry-sep">•</span>
+          <span id="gpu-vram-badge">VRAM: 8GB</span>
+        </div>
+
+        <button id="theme-toggle-btn" class="theme-switch-btn" title="تغییر تم (روشن / تیره)">
+          ☀️
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. Main Studio 2-Column Workspace (No-Scroll Viewport) -->
+    <main class="studio-main-grid">
+
+      <!-- LEFT COLUMN: Studio Console & Interactive Work Area -->
+      <section class="studio-console-panel">
+
+        <!-- ===============================================================
+             TAB 1: VOICE CLONE CONSOLE
+             =============================================================== -->
+        <div id="view-clone" class="tab-view-content active">
+          
+          <!-- Mode Switcher: Saved Profiles vs New Audio Upload -->
+          <div class="clone-mode-switcher">
+            <button type="button" id="btn-mode-profile" class="mode-tab-btn active">
+              <span>⚡</span>
+              <span>استفاده از گویندگان من (فوق‌سریع)</span>
+            </button>
+            <button type="button" id="btn-mode-custom" class="mode-tab-btn">
+              <span>🎙️</span>
+              <span>آپلود و کلون صدای جدید</span>
+            </button>
+          </div>
+
+          <!-- MODE A: Saved Profile Inline Quick Bar -->
+          <div id="container-mode-profile" class="profile-mode-wrapper">
+            <div class="profile-quick-bar">
+              <div class="profile-quick-avatar" id="selected-profile-avatar">👤</div>
+              
+              <div class="profile-quick-select-wrap">
+                <label for="select-saved-profile" class="screen-reader-only">انتخاب گوینده</label>
+                <select id="select-saved-profile" class="form-select profile-main-select">
+                  <option value="" disabled selected>در حال دریافت گویندگان...</option>
+                </select>
+                <div id="selected-profile-desc" class="profile-quick-meta">در حال بارگذاری اطلاعات گوینده...</div>
+              </div>
+
+              <!-- Quick preview sample playback -->
+              <div class="profile-quick-actions">
+                <button id="btn-play-profile-greeting" type="button" class="btn-ghost-sm" title="پخش نمونه صدای این گوینده">
+                  <span>▶️ تست صدا</span>
+                </button>
+                <audio id="audio-profile-greeting" style="display:none;"></audio>
+
+                <button id="btn-nav-to-profiles" type="button" class="btn-ghost-sm" title="مدیریت و افزودن گوینده جدید">
+                  <span>➕ گوینده جدید</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Hidden compatibility card for JS references -->
+            <div id="selected-profile-preview-card" style="display:none;">
+              <span id="selected-profile-name"></span>
+            </div>
+          </div>
+
+          <!-- MODE B: Custom Audio Upload & Precision Trimmer -->
+          <div id="container-mode-custom" class="custom-audio-wrapper" style="display:none;">
+            <!-- Drop zone (when no file loaded) -->
+            <div id="drop-zone" class="compact-drop-zone">
+              <div class="drop-zone-icon">🎵</div>
+              <div class="drop-zone-content">
+                <div class="drop-zone-title">فایل صوتی مرجع را اینجا بکشید یا برای انتخاب کلیک کنید</div>
+                <div class="drop-zone-subtitle">پشتیبانی از ویس تلگرام (OGG)، ضبط صدا، MP3، WAV (طول بهینه ۳ تا ۷ ثانیه)</div>
+              </div>
+              <input type="file" id="audio-file-input" accept="audio/*,.ogg,.mp3,.wav,.m4a" style="display:none;">
+            </div>
+
+            <!-- Waveform & Trimmer Editor (when file loaded) -->
+            <div id="trimmer-wrapper" class="compact-trimmer" style="display:none;">
+              <div class="trimmer-top-bar">
+                <div class="trimmer-file-info">
+                  <span id="audio-file-name" class="file-name-chip">audio.ogg</span>
+                  <span id="audio-total-duration" class="file-dur-chip">0.0s</span>
+                </div>
+                <div class="trimmer-actions">
+                  <button id="btn-play-trim" class="btn-micro"><span>▶️</span><span>پخش برش</span></button>
+                  <button id="btn-change-audio" class="btn-micro secondary">تعویض فایل</button>
+                </div>
+              </div>
+
+              <div class="waveform-compact-canvas">
+                <canvas id="waveform-canvas" height="85"></canvas>
+              </div>
+
+              <div class="trimmer-bottom-bar">
+                <div class="trimmer-times">
+                  <span>شروع: <strong id="trim-start-time">00:00.0</strong></span>
+                  <span>پایان: <strong id="trim-end-time">00:05.0</strong></span>
+                  <span>طول: <strong id="trim-duration-badge" style="color:var(--color-success);">5.0s</strong></span>
+                </div>
+                <div class="trimmer-preset-group">
+                  <button id="preset-first-3s" class="btn-chip" type="button">⚡ ۳ ثانیه اول</button>
+                  <button id="preset-first-5s" class="btn-chip active" type="button">🎯 ۵ ثانیه اول</button>
+                  <button id="preset-mid-5s" class="btn-chip" type="button">⏱️ ۵ ثانیه وسط</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reference text helper & whisper transcribe -->
+            <div class="ref-text-compact-row">
+              <input type="text" id="clone-ref-text" class="form-input-sm" placeholder="متن صدای مرجع (برای حداکثر شباهت صدا خالی بگذارید تا Whisper خودکار تراز کند)...">
+              <button id="btn-auto-transcribe" type="button" class="btn-micro accent" title="استخراج خودکار متن با مدل Whisper">
+                <span>🎙️ Whisper</span>
+              </button>
+              <button id="btn-clear-ref-text" type="button" class="btn-micro secondary" title="پاک کردن متن">
+                <span>🗑️</span>
+              </button>
+            </div>
+
+            <!-- Save as Profile Checkbox -->
+            <div class="save-profile-checkbox-bar">
+              <label class="compact-checkbox-label">
+                <input type="checkbox" id="chk-save-as-profile">
+                <span>این صدا را برای همیشه در بانک گویندگان من ذخیره کن</span>
+              </label>
+              <div id="save-as-profile-fields" style="display:none;" class="save-profile-inputs">
+                <input type="text" id="new-profile-name-input" class="form-input-sm" placeholder="نام گوینده (مثلاً: صدای اصلی من)...">
+                <input type="text" id="new-profile-desc-input" class="form-input-sm" placeholder="توضیحات اختیاری...">
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Format Switcher: Text vs Audio (Voice Conversion) -->
+          <div class="input-type-switcher">
+            <button type="button" id="btn-input-type-text" class="input-type-tab active">
+              <span>📝</span>
+              <span>تولید گفتار از متن (Text-to-Speech)</span>
+            </button>
+            <button type="button" id="btn-input-type-audio" class="input-type-tab">
+              <span>🔄</span>
+              <span>تغییر مستقیم صدا (Voice Conversion - صوت به صوت)</span>
+            </button>
+          </div>
+
+          <!-- OPTION A: Target Prompt Textarea (Clean & Ergonomic) -->
+          <div id="section-input-text" class="prompt-box-group">
+            <!-- TTS Engine Mode Switcher: OmniVoice Clone vs Native Persian Broadcast -->
+            <div class="tts-engine-selector" style="display:flex; gap:0.6rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+              <label class="engine-radio-pill active" id="label-engine-tts-omnivoice" style="flex:1; display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.15); border:1.5px solid var(--color-primary); cursor:pointer; font-size:0.8rem; font-weight:700; color:var(--text-main); transition:all 0.2s;">
+                <input type="radio" name="tts_engine_choice" id="engine-tts-omnivoice" value="omnivoice" checked style="accent-color:var(--color-primary);">
+                <span>🎙️ شبیه‌سازی و کلون صدای انتخابی شما (OmniVoice Neural Diffusion)</span>
+              </label>
+              <label class="engine-radio-pill" id="label-engine-tts-mms" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; font-size:0.8rem; color:var(--text-muted); transition:all 0.2s;">
+                <input type="radio" name="tts_engine_choice" id="engine-tts-mms" value="mms" style="accent-color:var(--color-primary);">
+                <span>🇮🇷 گوینده رسمی فارسی (Meta MMS - تلفظ اصیل، بدون لهجه استودیویی)</span>
+              </label>
+            </div>
+
+            <div class="prompt-label-row">
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <label for="clone-target-text" class="prompt-label">متن مورد نظر برای گویندگی:</label>
+                <span class="badge-persian-opt" style="font-size:0.7rem; background:rgba(99,102,241,0.18); color:var(--color-primary-light); padding:2px 8px; border-radius:12px; font-weight:700; border:1px solid rgba(99,102,241,0.35);">✨ بهینه‌ساز هوشمند رسم‌الخط و اعراب‌گذاری فعال است</span>
+              </div>
+              <span class="prompt-kbd-hint">کلید میانبر: <kbd>Ctrl + Enter</kbd></span>
+            </div>
+
+            <!-- Quick Punctuation & Pause Toolbar -->
+            <div class="quick-pause-toolbar">
+              <span class="quick-pause-title">درج فوری مکث و ریتم:</span>
+              <button type="button" class="btn-pause-chip" data-insert="، " title="مکث کوتاه تنفسی (کاما)"><span>،</span><span>مکث کوتاه</span></button>
+              <button type="button" class="btn-pause-chip" data-insert="... " title="مکث بلند تفکری (سه نقطه)"><span>...</span><span>مکث بلند</span></button>
+              <button type="button" class="btn-pause-chip" data-insert="‌" title="نیم‌فاصله میان واژه‌ای"><span>‌</span><span>نیم‌فاصله</span></button>
+              <button type="button" class="btn-pause-chip" data-insert="؟ " title="لحن پرسشی"><span>؟</span><span>سوالی</span></button>
+              <button type="button" class="btn-pause-chip" data-insert="! " title="تاکید و تعجب"><span>!</span><span>تاکید</span></button>
+              <button type="button" class="btn-pause-chip" data-insert="«»" data-offset="1" title="نقل‌قول مستقیم"><span>« »</span><span>نقل‌قول</span></button>
+              <div style="flex-grow:1;"></div>
+              <button type="button" class="btn-pause-chip btn-diacritize-action" id="btn-auto-diacritize" title="اعراب‌گذاری خودکار کلمات برای تلفظ دقیق و رفع لهجه در کلون صدا" style="background:rgba(99,102,241,0.18); border-color:var(--color-primary); color:var(--color-primary-light); font-weight:700;">
+                <span>✨</span>
+                <span>اعراب‌گذاری خودکار کلمات (تلفظ دقیق)</span>
+              </button>
+            </div>
+
+            <textarea id="clone-target-text" class="prompt-textarea" rows="3" placeholder="متن مورد نظر خود را اینجا بنویسید (مثلاً: سلام، این یک تست فوق‌العاده برای شبیه‌سازی صدای من است)...">سلام، این یک آزمایش شبیه‌سازی صدای باکیفیت و سریع با هوش مصنوعی روی کارت گرافیک است.</textarea>
+          </div>
+
+          <!-- OPTION B: Voice Conversion Input Area -->
+          <div id="section-input-voice-convert" class="vc-wrapper" style="display:none;">
+            <div class="vc-card">
+              <div class="vc-header">
+                <div>
+                  <div class="vc-title">🎙️ فایل صوتی مبدا را انتخاب کنید (صوتی که می‌خواهید به صدای شما تبدیل شود)</div>
+                  <div class="vc-subtitle">تبدیل هوشمند با موتور عصبی OmniVoice برای تولید صدای کاملاً طبیعی، شفاف و استودیویی با صدای خودتان.</div>
+                </div>
+              </div>
+
+              <!-- Engine Selector Buttons -->
+              <div class="vc-engine-selector" style="display:flex; gap:0.6rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+                <label class="engine-radio-pill active" id="label-engine-omnivoice" style="flex:1; display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.15); border:1.5px solid var(--color-primary); cursor:pointer; font-size:0.8rem; font-weight:700; color:var(--text-main);">
+                  <input type="radio" name="vc_engine" id="engine-omnivoice" value="omnivoice" checked style="accent-color:var(--color-primary);">
+                  <span>✨ موتور عصبی OmniVoice (طبیعی، شفاف، استودیویی با صدای شما)</span>
+                </label>
+                <label class="engine-radio-pill" id="label-engine-dsp" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; font-size:0.8rem; color:var(--text-muted);">
+                  <input type="radio" name="vc_engine" id="engine-dsp" value="dsp" style="accent-color:var(--color-primary);">
+                  <span>🤖 تغییر فرکانس فیزیکی DSP (فیلتر تغییر گام ریاضی)</span>
+                </label>
+              </div>
+
+              <!-- VC Drop zone -->
+              <div id="vc-drop-zone" class="compact-drop-zone">
+                <div class="drop-zone-icon">🎧</div>
+                <div class="drop-zone-content">
+                  <div class="drop-zone-title">فایل صوتی را اینجا بکشید یا برای انتخاب کلیک کنید</div>
+                  <div class="drop-zone-subtitle">پشتیبانی از ویس تلگرام (OGG)، ضبط صدا، سخنرانی، MP3، WAV، M4A</div>
+                </div>
+                <input type="file" id="vc-file-input" accept="audio/*,.ogg,.mp3,.wav,.m4a" style="display:none;">
+              </div>
+
+              <!-- VC Player & Info -->
+              <div id="vc-audio-preview-card" class="vc-preview-card" style="display:none;">
+                <div class="vc-file-info-row">
+                  <span id="vc-file-name" class="file-name-chip">audio.ogg</span>
+                  <span id="vc-file-dur" class="file-dur-chip">0.0s</span>
+                  <button type="button" id="btn-vc-change-file" class="btn-micro secondary">تعویض فایل</button>
+                  <button type="button" id="btn-vc-quick-transcribe" class="btn-micro accent" title="پیش‌نمایش متن با Whisper">🎙️ استخراج متن با Whisper</button>
+                </div>
+                <audio id="vc-audio-player" class="compact-audio-player" controls style="width:100%; height:32px; margin-top:0.35rem;"></audio>
+
+                <!-- Editable Transcribed Text Box for OmniVoice mode -->
+                <div id="vc-transcript-box" style="margin-top:0.5rem;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+                    <label for="vc-override-text" style="font-size:0.75rem; font-weight:700; color:var(--text-muted);">متن شناسایی‌شده (در صورت خالی بودن، Whisper حین تولید خودکار استخراج می‌کند):</label>
+                    <span id="vc-transcribe-status" style="font-size:0.7rem; color:var(--color-primary-light);"></span>
+                  </div>
+                  <textarea id="vc-override-text" class="form-input-sm" rows="2" style="width:100%; resize:vertical; font-size:0.8rem; line-height:1.4;" placeholder="متن استخراج‌شده از صوت اینجا نمایش می‌یابد یا می‌توانید خودتان بنویسید..."></textarea>
+                </div>
+              </div>
+
+              <!-- VC DSP Specific Tuning Controls (hidden when OmniVoice is active) -->
+              <div id="vc-dsp-controls-grid" class="vc-controls-grid" style="display:none;">
+                <div class="setting-item">
+                  <div class="setting-slider-header">
+                    <span class="setting-label">تراز گام صدا (Pitch Offset):</span>
+                    <span id="vc-pitch-badge" class="slider-badge">0 نیم‌پرده (خودکار)</span>
+                  </div>
+                  <input type="range" id="vc-pitch-slider" class="range-slider-sm" min="-12" max="12" step="0.5" value="0">
+                </div>
+
+                <div class="setting-item">
+                  <div class="setting-slider-header">
+                    <span class="setting-label">شدت تغییر لحن و تار صوتی:</span>
+                    <span id="vc-timbre-badge" class="slider-badge">100% (تطابق کامل)</span>
+                  </div>
+                  <input type="range" id="vc-timbre-slider" class="range-slider-sm" min="0.2" max="1.5" step="0.05" value="1.0">
+                </div>
+
+                <div class="setting-item" style="flex-direction:row; align-items:center; gap:0.5rem;">
+                  <label class="compact-checkbox-label" style="margin:0;">
+                    <input type="checkbox" id="vc-chk-denoise" checked>
+                    <span>حذف نویز پس‌زمینه فایل ورودی</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===============================================================
+               DEDICATED CADENCE, SPEED & PAUSE CONTROL PANEL
+               =============================================================== -->
+          <div class="cadence-control-card">
+            <div class="cadence-grid">
+              
+              <!-- 1. Fine-grained Speed Slider -->
+              <div class="cadence-item">
+                <div class="setting-slider-header">
+                  <span class="setting-label">⚡ سرعت گویندگی (Tempo / Speed):</span>
+                  <span id="speed-val-badge" class="slider-badge active-pill">1.00x (طبیعی)</span>
+                </div>
+                <input type="range" id="clone-speed-slider" class="range-slider-sm" min="0.40" max="2.00" step="0.05" value="1.00">
+                
+                <!-- Speed Quick Preset Chips -->
+                <div class="quick-chips-row">
+                  <button type="button" class="btn-speed-chip" data-speed="0.70">0.70x آرام</button>
+                  <button type="button" class="btn-speed-chip" data-speed="0.85">0.85x ملایم</button>
+                  <button type="button" class="btn-speed-chip active" data-speed="1.00">1.00x عادی</button>
+                  <button type="button" class="btn-speed-chip" data-speed="1.15">1.15x پرانرژی</button>
+                  <button type="button" class="btn-speed-chip" data-speed="1.30">1.30x سریع</button>
+                  <button type="button" class="btn-speed-chip" data-speed="1.50">1.50x پادکست</button>
+                </div>
+              </div>
+
+              <!-- 2. Inter-word and Phoneme Pause Scaler -->
+              <div class="cadence-item">
+                <div class="setting-slider-header">
+                  <span class="setting-label">⏱️ فاصله و مکث بین کلمات و آواها (Pause Scale):</span>
+                  <span id="pause-val-badge" class="slider-badge active-pill">1.00x (مکث طبیعی)</span>
+                </div>
+                <input type="range" id="clone-pause-slider" class="range-slider-sm" min="0.30" max="2.50" step="0.05" value="1.00">
+                
+                <!-- Pause Quick Preset Chips -->
+                <div class="quick-chips-row">
+                  <button type="button" class="btn-pause-scale-chip" data-pause="0.50">0.5x پیوسته/فشرده</button>
+                  <button type="button" class="btn-pause-scale-chip" data-pause="0.80">0.8x کم‌مکث</button>
+                  <button type="button" class="btn-pause-scale-chip active" data-pause="1.00">1.0x طبیعی</button>
+                  <button type="button" class="btn-pause-scale-chip" data-pause="1.40">1.4x شمرده</button>
+                  <button type="button" class="btn-pause-scale-chip" data-pause="1.80">1.8x مکث طولانی</button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Optional Exact Duration Override -->
+            <div class="duration-override-strip">
+              <label class="compact-checkbox-label">
+                <input type="checkbox" id="chk-duration-override">
+                <span>تعیین مدت‌زمان دقیق فایل خروجی (Duration Override):</span>
+              </label>
+              <div id="duration-input-wrapper" style="display:none; align-items:center; gap:0.4rem;">
+                <input type="number" id="clone-duration-input" class="form-input-sm" min="1.0" max="180.0" step="0.5" placeholder="مثلاً 12.5" style="width:110px;">
+                <span style="font-size:0.75rem; color:var(--text-muted);">ثانیه</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Compact Settings Strip (Language, Quality Steps, Likeness) -->
+          <div id="strip-standard-settings" class="studio-settings-strip">
+            <div class="setting-item">
+              <label class="setting-label">زبان:</label>
+              <select id="clone-language" class="form-select-sm">
+                <option value="Persian" selected>فارسی (Persian)</option>
+                <option value="Auto">تشخیص خودکار</option>
+                <option value="English">انگلیسی (English)</option>
+                <option value="Arabic">عربی (Arabic)</option>
+                <option value="Turkish">ترکی (Turkish)</option>
+                <option value="French">فرانسوی (French)</option>
+                <option value="German">آلمانی (German)</option>
+              </select>
+            </div>
+
+            <div class="setting-item">
+              <label class="setting-label">گام‌های کیفیت:</label>
+              <select id="clone-steps" class="form-select-sm">
+                <option value="12">⚡ رعدآسا فوق‌سریع (۱۲ گام - ۴x سریع‌تر از صوت)</option>
+                <option value="18">🚀 پرسرعت توربو (۱۸ گام)</option>
+                <option value="24">🎯 سریع و متعادل (۲۴ گام)</option>
+                <option value="36" selected>💎 دقیق استودیویی (۳۶ گام)</option>
+                <option value="48">👑 حداکثر وضوح (۴۸ گام)</option>
+                <option value="64">استودیویی عمیق (۶۴)</option>
+              </select>
+            </div>
+
+            <!-- CFG Likeness Slider (Compact) -->
+            <div class="setting-item setting-slider-item" style="grid-column: span 2;">
+              <div class="setting-slider-header">
+                <span class="setting-label">شباهت صدا (CFG Guidance):</span>
+                <span id="cfg-val-badge" class="slider-badge">2.0x (طبیعی و روان - هاگینگ‌فیس)</span>
+              </div>
+              <input type="range" id="clone-cfg-slider" class="range-slider-sm" min="1.2" max="3.5" step="0.1" value="2.0">
+            </div>
+          </div>
+
+          <!-- Advanced Studio Controls Drawer Toggle -->
+          <div class="advanced-tuning-toggle-row">
+            <button type="button" id="btn-toggle-advanced-tuning" class="btn-toggle-advanced">
+              <span>⚙️</span>
+              <span>تنظیمات استودیویی، دما و تک‌تک پارامترهای مدل (نمایش/مخفی)</span>
+              <span id="adv-toggle-chevron">▼</span>
+            </button>
+          </div>
+
+          <!-- Advanced Studio Controls Drawer Content -->
+          <div id="advanced-tuning-drawer" class="advanced-tuning-box" style="display:none;">
+            <div class="adv-grid">
+              
+              <!-- position_temperature -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">دمای تنوع و تحریر لحن (Position Temp):</label>
+                  <span id="badge-pos-temp" class="slider-badge">5.0 (متعادل)</span>
+                </div>
+                <input type="range" id="adv-pos-temp" class="range-slider-sm" min="1.0" max="9.0" step="0.5" value="5.0">
+                <span class="adv-hint">کمتر = یکنواخت و رسمی • بیشتر = احساسی و پرتحریر</span>
+              </div>
+
+              <!-- class_temperature -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">دمای انتخاب و ادای واج‌ها (Class Temp):</label>
+                  <span id="badge-class-temp" class="slider-badge">0.0 (دقیق‌ترین تلفظ)</span>
+                </div>
+                <input type="range" id="adv-class-temp" class="range-slider-sm" min="0.0" max="0.6" step="0.05" value="0.0">
+                <span class="adv-hint">۰.۰ = حداکثر وفاداری به لهجه مرجع</span>
+              </div>
+
+              <!-- t_shift -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">تایم‌شیفت ترنسفورمر (Time Shift):</label>
+                  <span id="badge-t-shift" class="slider-badge">0.10</span>
+                </div>
+                <input type="range" id="adv-t-shift" class="range-slider-sm" min="0.05" max="0.35" step="0.01" value="0.10">
+                <span class="adv-hint">شیفت زمانی توزیع نویز دیفیوژن</span>
+              </div>
+
+              <!-- audio_chunk_duration -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">طول فواصل تنفس و چانک‌ها:</label>
+                  <span id="badge-chunk-dur" class="slider-badge">12.0s</span>
+                </div>
+                <input type="range" id="adv-chunk-dur" class="range-slider-sm" min="6.0" max="24.0" step="1.0" value="12.0">
+                <span class="adv-hint">طول هر تکه صوتی برای اتصال در متون طولانی</span>
+              </div>
+
+              <!-- pitch_shift -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">تغییر گام صدا (Pitch Shift):</label>
+                  <span id="badge-pitch-shift" class="slider-badge">0 (طبیعی)</span>
+                </div>
+                <input type="range" id="adv-pitch-shift" class="range-slider-sm" min="-6.0" max="6.0" step="0.5" value="0.0">
+                <span class="adv-hint">بم‌تر یا زیرتر کردن کل خروجی</span>
+              </div>
+
+              <!-- seed -->
+              <div class="adv-form-group">
+                <div class="adv-slider-header">
+                  <label class="adv-label">سید تصادفی (Random Seed):</label>
+                  <span class="slider-badge">-1 (تصادفی)</span>
+                </div>
+                <div style="display:flex; gap:0.4rem; align-items:center;">
+                  <input type="number" id="adv-seed" class="form-input-sm" value="-1" placeholder="-1 برای تصادفی" style="flex:1;">
+                  <button type="button" id="btn-adv-random-seed" class="btn-micro secondary" title="تولید عدد تصادفی">🎲</button>
+                </div>
+                <span class="adv-hint">برای بازتولید ۱۰۰٪ یکسان، عدد ثابت وارد کنید</span>
+              </div>
+
+              <!-- Denoise & Volume Normalize -->
+              <div class="adv-form-group" style="grid-column: 1 / -1; display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap; padding-top:0.4rem; border-top:1px dashed var(--border-subtle);">
+                <label class="compact-checkbox-label">
+                  <input type="checkbox" id="adv-chk-denoise" checked>
+                  <span>حذف نویز پس‌زمینه (Denoise Token)</span>
+                </label>
+                <label class="compact-checkbox-label">
+                  <input type="checkbox" id="adv-chk-normalize-volume" checked>
+                  <span>نرمال‌سازی حجم صدا (Peak Normalization)</span>
+                </label>
+                <button type="button" id="btn-adv-reset-defaults" class="btn-micro secondary" style="margin-right:auto;">
+                  <span>↺ بازنشانی تمام پارامترها به پیش‌فرض</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Primary Action Button -->
+          <div class="action-submit-row">
+            <button id="btn-generate-clone" class="btn-glow-primary">
+              <span class="btn-sparkle">✨</span>
+              <span id="btn-generate-clone-label">تولید فوری صدا با گوینده ذخیره‌شده (فوق‌سریع)</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- ===============================================================
+             TAB 2: VOICE PROFILES (SPEAKER BANK)
+             =============================================================== -->
+        <div id="view-profiles" class="tab-view-content" style="display:none;">
+          <div class="profiles-tab-header">
+            <div>
+              <h2 class="section-title">🎭 بانک گویندگان من (Voice Profiles)</h2>
+              <p class="section-sub">پروفایل‌های ذخیره‌شده دائمی؛ تولید آنی گفتار بدون نیاز به استخراج مجدد ویژگی‌های صوت</p>
+            </div>
+            <button id="btn-show-create-profile" class="btn-compact-primary">
+              <span>➕</span>
+              <span>ثبت گوینده جدید</span>
+            </button>
+          </div>
+
+          <!-- Create New Profile Drawer / Box -->
+          <div id="create-profile-box" class="create-profile-drawer" style="display:none;">
+            <div class="drawer-header">
+              <h3>✨ ساخت و یادگیری دائمی صدای جدید</h3>
+              <button id="btn-close-create-profile" class="btn-micro secondary">✕ بستن</button>
+            </div>
+
+            <div class="drawer-grid">
+              <div class="form-group-compact">
+                <label>نام گوینده:</label>
+                <input type="text" id="prof-name" class="form-input-sm" placeholder="مثلاً: صدای من، علی...">
+              </div>
+              <div class="form-group-compact">
+                <label>توضیحات (اختیاری):</label>
+                <input type="text" id="prof-desc" class="form-input-sm" placeholder="مثلاً: ویس تلگرام بدون نویز">
+              </div>
+              <div class="form-group-compact" style="grid-column: 1 / -1;">
+                <label>فایل صوتی مرجع (Reference Audio):</label>
+                <input type="file" id="prof-audio-file" accept="audio/*,.ogg,.mp3,.wav,.m4a" class="form-input-sm">
+              </div>
+              <div class="form-group-compact" style="grid-column: 1 / -1;">
+                <label>متن نمونه صدای خوش‌آمدگویی (Greeting):</label>
+                <input type="text" id="prof-greeting-text" class="form-input-sm" value="سلام، این صدای شبیه‌سازی‌شده‌ی من است که برای همیشه ذخیره شده است.">
+              </div>
+              <div class="form-group-compact">
+                <label>میزان تطابق (CFG):</label>
+                <select id="prof-cfg" class="form-select-sm">
+                  <option value="2.0" selected>طبیعی و روان - هاگینگ‌فیس (2.0)</option>
+                  <option value="2.4">تطابق دقیق‌تر (2.4)</option>
+                  <option value="2.8">حداکثر انطباق تار صوتی (2.8)</option>
+                </select>
+              </div>
+              <div class="form-group-compact">
+                <label>گام‌های دیفیوژن:</label>
+                <select id="prof-steps" class="form-select-sm">
+                  <option value="32">استاندارد (۳۲)</option>
+                  <option value="36" selected>دقیق (۳۶)</option>
+                  <option value="48">وضوح بالا (۴۸)</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="btn-submit-create-profile" class="btn-glow-primary" style="margin-top:0.5rem; padding:0.65rem;">
+              <span>💾</span>
+              <span>یادگیری و ثبت دائمی گوینده</span>
+            </button>
+          </div>
+
+          <!-- Profiles Grid -->
+          <div id="profiles-grid-container" class="profiles-cards-container">
+            <p class="empty-state-text">در حال بارگذاری گویندگان...</p>
+          </div>
+        </div>
+
+        <!-- ===============================================================
+             TAB 3: VOICE DESIGN (PROMPT-TO-VOICE)
+             =============================================================== -->
+        <div id="view-design" class="tab-view-content" style="display:none;">
+          <div class="profiles-tab-header">
+            <div>
+              <h2 class="section-title">🎨 طراحی کاراکتر صدا (Voice Design)</h2>
+              <p class="section-sub">تولید هوشمند صدا بر اساس ویژگی‌های کاراکتر بدون نیاز به صوت مرجع</p>
+            </div>
+          </div>
+
+          <div class="prompt-box-group" style="margin-top:0.5rem;">
+            <label for="design-target-text" class="prompt-label">متن مورد نظر برای گویندگی:</label>
+            <textarea id="design-target-text" class="prompt-textarea" rows="3" placeholder="متن خود را بنویسید...">به استودیوی هوش مصنوعی OmniVoice خوش آمدید. صدای شما بدون نیاز به گوینده و در کمترین زمان ممکن آماده می‌شود.</textarea>
+          </div>
+
+          <div class="design-grid-options">
+            <div class="form-group-compact">
+              <label>جنسیت:</label>
+              <select id="design-gender" class="form-select-sm">
+                <option value="Male">آقا (Male)</option>
+                <option value="Female" selected>خانم (Female)</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>رده سنی:</label>
+              <select id="design-age" class="form-select-sm">
+                <option value="Child">کودک</option>
+                <option value="Teenager">نوجوان</option>
+                <option value="Young Adult" selected>جوان (Young Adult)</option>
+                <option value="Middle-aged">میانسال</option>
+                <option value="Elderly">کهنسال</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>تن صدا (Pitch):</label>
+              <select id="design-pitch" class="form-select-sm">
+                <option value="Low Pitch">بم (Low)</option>
+                <option value="Moderate Pitch" selected>متوسط و طبیعی (Moderate)</option>
+                <option value="High Pitch">زیر (High)</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>سبک گفتار:</label>
+              <select id="design-style" class="form-select-sm">
+                <option value="" selected>طبیعی و رسمی</option>
+                <option value="Whisper">زمزمه و آرام (Whisper)</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>لهجه انگلیسی:</label>
+              <select id="design-accent" class="form-select-sm">
+                <option value="" selected>بدون لهجه خاص</option>
+                <option value="American Accent">آمریکایی</option>
+                <option value="British Accent">بریتانیایی</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>زبان:</label>
+              <select id="design-language" class="form-select-sm">
+                <option value="Persian" selected>فارسی (Persian)</option>
+                <option value="Auto">تشخیص خودکار</option>
+                <option value="English">انگلیسی</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>سرعت:</label>
+              <select id="design-speed" class="form-select-sm">
+                <option value="0.85">آرام (0.85x)</option>
+                <option value="1.0" selected>عادی (1.0x)</option>
+                <option value="1.15">سریع (1.15x)</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>گام‌های کیفیت:</label>
+              <select id="design-steps" class="form-select-sm">
+                <option value="12">⚡ رعدآسا فوق‌سریع (۱۲ گام)</option>
+                <option value="18">🚀 پرسرعت توربو (۱۸ گام)</option>
+                <option value="24">🎯 استاندارد (۲۴ گام)</option>
+                <option value="36" selected>💎 دقیق استودیویی (۳۶ گام)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="action-submit-row" style="margin-top:0.75rem;">
+            <button id="btn-generate-design" class="btn-glow-primary">
+              <span>🎨</span>
+              <span>طراحی و تولید صدا با ویژگی‌های انتخابی</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ===============================================================
+             TAB 4: FULL HISTORY
+             =============================================================== -->
+        <div id="view-history" class="tab-view-content" style="display:none;">
+          <div class="profiles-tab-header">
+            <div>
+              <h2 class="section-title">📜 کتابخانه کامل صوت‌های تولید شده</h2>
+              <p class="section-sub">فایل‌های صوتی تولید شده در این نشست کاری</p>
+            </div>
+          </div>
+          <div id="history-list" class="history-full-list" style="margin-top:0.75rem;">
+            <p class="empty-state-text">در حال دریافت تاریخچه...</p>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- RIGHT COLUMN: Output Monitor & Live Feed (Zero Scroll) -->
+      <aside class="studio-monitor-panel">
+
+        <!-- 1. Live Progress Card (During Generation) -->
+        <div id="progress-container" class="live-progress-card" style="display:none;">
+          <div class="progress-top-row">
+            <div class="progress-status-title">
+              <span class="spinner-dot"></span>
+              <span id="progress-stage-title">در حال آماده‌سازی فرآیند...</span>
+            </div>
+            <span id="progress-percent-badge" class="percent-tag">0%</span>
+          </div>
+
+          <div class="progress-track-bar">
+            <div id="progress-bar-fill" class="progress-fill-bar"></div>
+          </div>
+
+          <div class="progress-micro-stepper">
+            <span id="step-1" class="micro-step active">۱. ورودی</span>
+            <span id="step-2" class="micro-step">۲. توکن‌ها</span>
+            <span id="step-3" class="micro-step">۳. دیفیوژن</span>
+            <span id="step-4" class="micro-step">۴. WAV</span>
+          </div>
+
+          <div class="progress-footer-stats">
+            <span>زمان سپری‌شده: <strong id="progress-timer-badge">0.0s</strong></span>
+            <span class="gpu-active-tag">NVIDIA RTX 4060 (FP16)</span>
+          </div>
+        </div>
+
+        <!-- 2. Active Output Result Player -->
+        <div id="result-card" class="result-player-card" style="display:none;">
+          <div class="result-player-header">
+            <div class="result-player-title">
+              <span>🔊</span>
+              <span>خروجی تولید شده نهایی</span>
+            </div>
+            <span class="badge-success-micro">آماده دانلود</span>
+          </div>
+
+          <audio id="result-audio-player" class="compact-audio-player" controls></audio>
+
+          <!-- Metrics badges -->
+          <div class="result-metrics-row">
+            <span id="result-duration-badge" class="metric-chip">طول صوت: 0s</span>
+            <span id="result-time-badge" class="metric-chip accent">پردازش: 0s</span>
+            <span id="result-rtf-badge" class="metric-chip success">RTF: 0x</span>
+          </div>
+
+          <!-- Spoken text preview -->
+          <div class="result-text-box">
+            <span class="result-text-label">متن خوانده شده:</span>
+            <p id="result-text-preview" class="result-text-content"></p>
+          </div>
+
+          <!-- Download button -->
+          <a id="btn-download-result" href="#" download="omnivoice_output.wav" class="btn-download-wav">
+            <span>💾</span>
+            <span>دانلود صوت با کیفیت استودیویی (WAV 24kHz)</span>
+          </a>
+        </div>
+
+        <!-- 3. Idle Monitor Placeholder (when no audio is playing yet) -->
+        <div id="monitor-idle-card" class="monitor-idle-state">
+          <div class="idle-soundwave-icon">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+          </div>
+          <div class="idle-title">مانیتور خروجی صدا</div>
+          <p class="idle-desc">متن خود را در پنل روبرو بنویسید و دکمه تولید را بزنید. صوت بلافاصله در این بخش آماده پخش می‌شود.</p>
+        </div>
+
+        <!-- 4. Quick Recent Generations Feed -->
+        <div class="recent-feed-card">
+          <div class="recent-feed-header">
+            <span>⚡ آخرین تولیدات این نشست</span>
+            <span class="feed-count-badge" id="feed-count-badge">امروز</span>
+          </div>
+          <div id="quick-history-feed" class="quick-history-scroll-list">
+            <!-- Populated dynamically via JS -->
+          </div>
+        </div>
+
+      </aside>
+
+    </main>
+
+  </div>
+
+  <!-- JavaScript Modules -->
+  <script src="/static/js/audio-editor.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
