@@ -243,16 +243,11 @@
                 </div>
               </div>
 
-              <!-- Engine Selector Buttons -->
-              <div class="vc-engine-selector" style="display:flex; gap:0.6rem; margin-bottom:0.75rem; flex-wrap:wrap;">
-                <label class="engine-radio-pill active" id="label-engine-omnivoice" style="flex:1; display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.15); border:1.5px solid var(--color-primary); cursor:pointer; font-size:0.8rem; font-weight:700; color:var(--text-main);">
-                  <input type="radio" name="vc_engine" id="engine-omnivoice" value="omnivoice" checked style="accent-color:var(--color-primary);">
-                  <span>✨ موتور عصبی OmniVoice (پیشنهادی - شبیه‌سازی دقیق، شفاف و طبیعی با صدای شما)</span>
-                </label>
-                <label class="engine-radio-pill" id="label-engine-dsp" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; font-size:0.8rem; color:var(--text-muted);">
-                  <input type="radio" name="vc_engine" id="engine-dsp" value="dsp" style="accent-color:var(--color-primary);">
-                  <span>🤖 فیلتر فرکانس ریاضی DSP (تغییر گام بدون بازتولید عصبی)</span>
-                </label>
+              <!-- Dedicated Neural Voice Conversion Engine -->
+              <div style="display:flex; align-items:center; gap:0.5rem; padding:0.55rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.14); border:1.5px solid var(--color-primary); margin-bottom:0.75rem; font-size:0.8rem; font-weight:700; color:var(--text-main);">
+                <span>✨</span>
+                <span>تبدیل صوت به صوت با هوش مصنوعی OmniVoice (شبیه‌سازی کامل تار صوتی و تغییر صدای هر شخص به صدای شما)</span>
+                <input type="radio" name="vc_engine" id="engine-omnivoice" value="omnivoice" checked style="display:none;">
               </div>
 
               <!-- VC Drop zone -->
@@ -275,32 +270,6 @@
                 </div>
                 <audio id="vc-audio-player" class="compact-audio-player" controls style="width:100%; height:32px; margin-top:0.35rem;"></audio>
                 <input type="hidden" id="vc-override-text" value="">
-              </div>
-
-              <!-- VC DSP Specific Tuning Controls (hidden when OmniVoice is active) -->
-              <div id="vc-dsp-controls-grid" class="vc-controls-grid" style="display:none;">
-                <div class="setting-item">
-                  <div class="setting-slider-header">
-                    <span class="setting-label">تراز گام صدا (Pitch Offset):</span>
-                    <span id="vc-pitch-badge" class="slider-badge">0 نیم‌پرده (خودکار)</span>
-                  </div>
-                  <input type="range" id="vc-pitch-slider" class="range-slider-sm" min="-12" max="12" step="0.5" value="0">
-                </div>
-
-                <div class="setting-item">
-                  <div class="setting-slider-header">
-                    <span class="setting-label">شدت تغییر لحن و تار صوتی:</span>
-                    <span id="vc-timbre-badge" class="slider-badge">100% (تطابق کامل)</span>
-                  </div>
-                  <input type="range" id="vc-timbre-slider" class="range-slider-sm" min="0.2" max="1.5" step="0.05" value="1.0">
-                </div>
-
-                <div class="setting-item" style="flex-direction:row; align-items:center; gap:0.5rem;">
-                  <label class="compact-checkbox-label" style="margin:0;">
-                    <input type="checkbox" id="vc-chk-denoise" checked>
-                    <span>حذف نویز پس‌زمینه فایل ورودی</span>
-                  </label>
-                </div>
               </div>
             </div>
           </div>

@@ -1058,9 +1058,7 @@ function initFormActions() {
       const formData = new FormData();
       formData.append('source_audio', vcSourceFile);
 
-      const isOmni = document.getElementById('engine-omnivoice')?.checked ?? true;
-      const convertEngine = isOmni ? 'omnivoice' : 'dsp';
-      formData.append('convert_engine', convertEngine);
+      formData.append('convert_engine', 'omnivoice');
 
       const transcribedText = document.getElementById('vc-override-text')?.value?.trim() || '';
       formData.append('transcribed_text', transcribedText);
