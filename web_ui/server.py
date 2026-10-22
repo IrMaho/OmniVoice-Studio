@@ -1793,6 +1793,55 @@ async def api_delete_profile(profile_id: str):
     save_profiles_db(profiles)
     return {"success": True, "message": "پروفایل گوینده با موفقیت حذف شد."}
 
+@app.put("/api/profiles/{profile_id}")
+async def api_update_profile(profile_id: str, request: Request):
+    profiles = load_profiles_db()
+    prof = next((p for p in profiles if p["id"] == profile_id), None)
+    if not prof:
+        raise HTTPException(status_code=404, detail="پروفایل گوینده یافت نشد.")
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        data = await request.json()
+        name = data.get("name")
+        description = data.get("description", "")
+        guidance_scale = data.get("guidance_scale")
+        num_steps = data.get("num_steps")
+        greeting_text = data.get("greeting_text")
+        ref_text = data.get("ref_text")
+    else:
+        form = await request.form()
+        name = form.get("name")
+        description = form.get("description", "")
+        guidance_scale = form.get("guidance_scale")
+        num_steps = form.get("num_steps")
+        greeting_text = form.get("greeting_text")
+        ref_text = form.get("ref_text")
+
+    if not name or not str(name).strip():
+        raise HTTPException(status_code=400, detail="نام گوینده نمی‌تواند خالی باشد.")
+
+    prof["name"] = str(name).strip()
+    prof["description"] = str(description).strip() if description else ""
+    if guidance_scale is not None and str(guidance_scale).strip():
+        try:
+            prof["guidance_scale"] = float(guidance_scale)
+        except (ValueError, TypeError):
+            pass
+    if num_steps is not None and str(num_steps).strip():
+        try:
+            prof["num_steps"] = int(num_steps)
+        except (ValueError, TypeError):
+            pass
+    if greeting_text is not None:
+        prof["greeting_text"] = str(greeting_text).strip()
+    if ref_text is not None:
+        prof["ref_text"] = str(ref_text).strip()
+
+    save_profiles_db(profiles)
+    logger.info(f"Profile updated: {prof['name']} ({profile_id})")
+    return {"success": True, "profile": prof}
+
 @app.get("/api/history")
 async def api_history():
     return {"history": history_records}
@@ -1946,15 +1995,17 @@ def assemble_story_audio(
     pause_after_list: List[float],
     repeat_list: List[int],
     crossfade_ms: int = 120,
+    crossfade_list: Optional[List[int]] = None,
     trim_silence: bool = True,
     sample_rate: int = 24000,
 ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
     """
     Seamless multi-speaker audio assembly with:
     1. Smart silence stripping of head/tail dead zones (eliminates the awkward 1-second pause).
-    2. Equal-power crossfading for seamless transitions (pause_after <= 0.01s).
-    3. Smooth envelope fade-in/fade-out for paused transitions.
-    4. Exact timeline timestamps for each dialogue chapter.
+    2. High-precision Equal-power crossfading for seamless transitions (pause_after <= 0.01s).
+    3. Per-dialogue crossfade override support (0ms to 1000ms+).
+    4. Smooth envelope fade-in/fade-out for paused transitions.
+    5. Exact timeline timestamps for each dialogue chapter.
     """
     processed_dialogues = []
 
@@ -1986,16 +2037,6 @@ def assemble_story_audio(
     master_audio = np.zeros(0, dtype=np.float32)
     timeline = []
 
-    cf_samples = int(sample_rate * (max(0, crossfade_ms) / 1000.0))
-    # Precompute equal-power curves
-    if cf_samples > 0:
-        t_curve = np.linspace(0, np.pi / 2, cf_samples, dtype=np.float32)
-        eq_fade_out = np.cos(t_curve)
-        eq_fade_in = np.sin(t_curve)
-    else:
-        eq_fade_out = np.zeros(0, dtype=np.float32)
-        eq_fade_in = np.zeros(0, dtype=np.float32)
-
     edge_fade_samples = int(sample_rate * 0.015)  # 15ms anti-click
     edge_fade_in = np.linspace(0, 1, edge_fade_samples, dtype=np.float32)
     edge_fade_out = np.linspace(1, 0, edge_fade_samples, dtype=np.float32)
@@ -2017,17 +2058,21 @@ def assemble_story_audio(
         else:
             # Transition from previous dialogue
             prev_pause = pause_after_list[idx - 1] if idx > 0 else 0.0
+            line_cf = crossfade_list[idx] if (crossfade_list and idx < len(crossfade_list)) else crossfade_ms
+            cur_cf_samples = int(sample_rate * (max(0, line_cf) / 1000.0))
 
-            if prev_pause <= 0.01 and cf_samples > 0 and len(master_audio) >= cf_samples and len(cur_wav) >= cf_samples:
+            if prev_pause <= 0.01 and cur_cf_samples > 0 and len(master_audio) >= cur_cf_samples and len(cur_wav) >= cur_cf_samples:
                 # SEAMLESS EQUAL-POWER CROSSFADE!
-                line_start = (len(master_audio) - cf_samples) / sample_rate
+                t_curve = np.linspace(0, np.pi / 2, cur_cf_samples, dtype=np.float32)
+                cur_eq_out = np.cos(t_curve)
+                cur_eq_in = np.sin(t_curve)
 
-                # Overlap end of master_audio with start of cur_wav
-                overlap_region = (master_audio[-cf_samples:] * eq_fade_out) + (cur_wav[:cf_samples] * eq_fade_in)
+                line_start = (len(master_audio) - cur_cf_samples) / sample_rate
+                overlap_region = (master_audio[-cur_cf_samples:] * cur_eq_out) + (cur_wav[:cur_cf_samples] * cur_eq_in)
                 master_audio = np.concatenate([
-                    master_audio[:-cf_samples],
+                    master_audio[:-cur_cf_samples],
                     overlap_region,
-                    cur_wav[cf_samples:]
+                    cur_wav[cur_cf_samples:]
                 ])
                 line_end = len(master_audio) / sample_rate
             else:
@@ -2181,6 +2226,11 @@ async def api_story_generate(request: Request):
             pause_list.append(pause_after)
             repeat_list.append(repeats)
 
+        crossfade_list = []
+        for item in dialogues:
+            cf = item.get("crossfade_ms")
+            crossfade_list.append(int(cf) if cf is not None else crossfade_ms)
+
         current_progress.update({
             "stage": "decoding",
             "stage_text": f"میکس و مونتاژ پیوسته با فید متقاطع ({crossfade_ms}ms) و خروجی {output_format.upper()}...",
@@ -2192,6 +2242,7 @@ async def api_story_generate(request: Request):
             pause_list,
             repeat_list,
             crossfade_ms=crossfade_ms,
+            crossfade_list=crossfade_list,
             trim_silence=trim_silence,
             sample_rate=24000,
         )

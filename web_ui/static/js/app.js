@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCfgSlider();
   initProfilesManager();
   initSaveSpeakerModal();
+  initEditProfileModal();
   initFormActions();
   initStoryStudio();
   initScenarioLibrary();
@@ -927,6 +928,17 @@ function initProfilesManager() {
       playGreetingBtn.innerHTML = '<span>▶️ تست صدا</span>';
     });
   }
+
+  const editSelectedBtn = document.getElementById('btn-edit-selected-profile');
+  if (editSelectedBtn) {
+    editSelectedBtn.addEventListener('click', () => {
+      if (selectedProfile) {
+        openEditProfileModal(selectedProfile.id);
+      } else {
+        alert('لطفاً ابتدا یک گوینده را انتخاب نمایید.');
+      }
+    });
+  }
 }
 
 async function loadProfiles(selectProfileId = null) {
@@ -1034,6 +1046,9 @@ function renderProfilesGrid(profiles) {
       <div class="profile-card-actions">
         <button class="btn-micro accent" style="flex:1;" onclick="useProfileForClone('${p.id}')">
           <span>⚡</span><span>انتخاب برای خوانش</span>
+        </button>
+        <button class="btn-micro secondary" style="color:var(--text-main);" onclick="openEditProfileModal('${p.id}')" title="ویرایش مشخصات گوینده">
+          <span>✏️</span>
         </button>
         <button class="btn-micro secondary" style="color:#ef4444;" onclick="confirmDeleteProfile('${p.id}')" title="حذف گوینده">
           <span>🗑️</span>
@@ -1176,6 +1191,122 @@ function initSaveSpeakerModal() {
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// 7.2. Edit Speaker Profile Modal
+// ---------------------------------------------------------------------------
+function initEditProfileModal() {
+  const modal = document.getElementById('edit-profile-modal');
+  const btnClose = document.getElementById('btn-close-edit-profile-modal');
+  const btnCancel = document.getElementById('btn-cancel-edit-profile');
+  const btnSave = document.getElementById('btn-confirm-save-edit-profile');
+
+  const closeModal = () => {
+    if (modal) modal.style.display = 'none';
+  };
+
+  if (btnClose) btnClose.addEventListener('click', closeModal);
+  if (btnCancel) btnCancel.addEventListener('click', closeModal);
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const profId = document.getElementById('edit-prof-id')?.value;
+      const name = document.getElementById('edit-prof-name')?.value?.trim();
+      const desc = document.getElementById('edit-prof-desc')?.value?.trim() || '';
+      const cfg = parseFloat(document.getElementById('edit-prof-cfg')?.value) || 2.0;
+      const steps = parseInt(document.getElementById('edit-prof-steps')?.value) || 36;
+      const greeting = document.getElementById('edit-prof-greeting')?.value?.trim() || '';
+      const refText = document.getElementById('edit-prof-ref-text')?.value?.trim() || '';
+
+      if (!profId) return;
+      if (!name) {
+        alert('لطفاً نام گوینده را وارد کنید.');
+        document.getElementById('edit-prof-name')?.focus();
+        return;
+      }
+
+      btnSave.disabled = true;
+      btnSave.innerHTML = '<span>⏳ در حال ذخیره...</span>';
+
+      try {
+        const res = await fetch(`/api/profiles/${profId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            description: desc,
+            guidance_scale: cfg,
+            num_steps: steps,
+            greeting_text: greeting,
+            ref_text: refText,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success && data.profile) {
+          // Update cachedProfiles in place
+          const idx = cachedProfiles.findIndex(p => p.id === profId);
+          if (idx !== -1) {
+            cachedProfiles[idx] = { ...cachedProfiles[idx], ...data.profile };
+          }
+          renderProfilesGrid(cachedProfiles);
+          renderProfilesSelect(cachedProfiles);
+          if (typeof updateStorySpeakerSelects === 'function') {
+            updateStorySpeakerSelects();
+          }
+          if (selectedProfile && selectedProfile.id === profId) {
+            updateSelectedProfileCard(data.profile);
+          }
+          closeModal();
+          alert(`✅ مشخصات گوینده «${name}» با موفقیت به‌روزرسانی شد!`);
+        } else {
+          alert('خطا در ذخیره تغییرات: ' + (data.detail || data.error || 'ناشناخته'));
+        }
+      } catch (err) {
+        console.error('Update profile error:', err);
+        alert('خطا در ارتباط با سرور: ' + err.message);
+      } finally {
+        btnSave.disabled = false;
+        btnSave.innerHTML = '<span>💾</span><span>ذخیره تغییرات</span>';
+      }
+    });
+  }
+}
+
+window.openEditProfileModal = function(profId) {
+  const prof = cachedProfiles.find(p => p.id === profId);
+  if (!prof) {
+    alert('پروفایل گوینده یافت نشد.');
+    return;
+  }
+
+  const modal = document.getElementById('edit-profile-modal');
+  const idInput = document.getElementById('edit-prof-id');
+  const nameInput = document.getElementById('edit-prof-name');
+  const descInput = document.getElementById('edit-prof-desc');
+  const cfgInput = document.getElementById('edit-prof-cfg');
+  const stepsSelect = document.getElementById('edit-prof-steps');
+  const greetingInput = document.getElementById('edit-prof-greeting');
+  const refTextInput = document.getElementById('edit-prof-ref-text');
+
+  if (idInput) idInput.value = prof.id;
+  if (nameInput) nameInput.value = prof.name || '';
+  if (descInput) descInput.value = prof.description || '';
+  if (cfgInput) cfgInput.value = prof.guidance_scale || 2.0;
+  if (stepsSelect) stepsSelect.value = prof.num_steps || 36;
+  if (greetingInput) greetingInput.value = prof.greeting_text || '';
+  if (refTextInput) refTextInput.value = prof.ref_text || '';
+
+  if (modal) modal.style.display = 'flex';
+  setTimeout(() => {
+    if (nameInput) nameInput.focus();
+  }, 60);
+};
 
 // ---------------------------------------------------------------------------
 // 8. Form Actions & Generation Submit (With Ctrl + Enter Shortcut)
@@ -1794,6 +1925,54 @@ function initStoryStudio() {
     });
   }
 
+  // Precision Crossfade Slider & Numeric Input Bidirectional Sync
+  const cfSlider = document.getElementById('story-crossfade-slider');
+  const cfNumber = document.getElementById('story-crossfade-number');
+  const cfBadge = document.getElementById('story-crossfade-badge');
+  const cfChips = document.querySelectorAll('#story-crossfade-preset-chips .cf-chip');
+
+  const updateCrossfadeUI = (val) => {
+    const num = Math.max(0, Math.min(2000, parseInt(val) || 0));
+    if (cfSlider) cfSlider.value = Math.min(1000, num);
+    if (cfNumber) cfNumber.value = num;
+    if (cfBadge) cfBadge.textContent = `${num} ms`;
+
+    if (cfChips) {
+      cfChips.forEach(chip => {
+        const chipMs = parseInt(chip.getAttribute('data-ms'));
+        if (chipMs === num) {
+          chip.classList.add('active');
+        } else {
+          chip.classList.remove('active');
+        }
+      });
+    }
+  };
+
+  if (cfSlider) {
+    cfSlider.addEventListener('input', (e) => {
+      updateCrossfadeUI(e.target.value);
+    });
+  }
+
+  if (cfNumber) {
+    cfNumber.addEventListener('input', (e) => {
+      updateCrossfadeUI(e.target.value);
+    });
+    cfNumber.addEventListener('change', (e) => {
+      updateCrossfadeUI(e.target.value);
+    });
+  }
+
+  if (cfChips) {
+    cfChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        const ms = parseInt(chip.getAttribute('data-ms')) || 0;
+        updateCrossfadeUI(ms);
+      });
+    });
+  }
+
   // Start with clean, empty scenario (no forced defaults)
   storyDialogues = [];
   const titleInput = document.getElementById('story-title-input');
@@ -1844,6 +2023,7 @@ function addStoryDialogue(initialProps = {}) {
     pitch_shift: initialProps.pitch_shift || 0.0,
     num_steps: initialProps.num_steps || defaultSteps,
     guidance_scale: initialProps.guidance_scale || 2.0,
+    crossfade_ms: initialProps.crossfade_ms !== undefined ? initialProps.crossfade_ms : null,
     preview_url: null,
     show_tweaks: false,
   };
@@ -2141,6 +2321,42 @@ function renderStoryDialogues() {
                 <option value="36" ${dlg.num_steps === 36 ? 'selected' : ''}>💎 دقیق (۳۶)</option>
               </select>
             </div>
+            <div class="dialogue-tweak-item" style="grid-column: 1 / -1; display:flex; flex-direction:column; gap:0.25rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label>فید متقاطع اختصاصی با دیالوگ بعدی (Crossfade):</label>
+                <span style="font-size:0.72rem; color:#38bdf8; font-weight:700;">
+                  ${dlg.crossfade_ms !== null && dlg.crossfade_ms !== undefined ? dlg.crossfade_ms + ' ms (سفارشی)' : 'همگام با فید سراسری سناریو'}
+                </span>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.4rem;">
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1000" 
+                  step="5" 
+                  value="${dlg.crossfade_ms !== null && dlg.crossfade_ms !== undefined ? dlg.crossfade_ms : 120}" 
+                  class="slider-precision" 
+                  style="flex:1;"
+                  oninput="updateDialogueCrossfade(${idx}, this.value)"
+                >
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="2000" 
+                  step="5" 
+                  value="${dlg.crossfade_ms !== null && dlg.crossfade_ms !== undefined ? dlg.crossfade_ms : ''}" 
+                  placeholder="عمومی"
+                  class="dialogue-cf-inline-input"
+                  style="width:58px;"
+                  onchange="updateDialogueCrossfade(${idx}, this.value)"
+                  title="تایپ مستقیم میلی‌ثانیه فید اختصاصی"
+                >
+                <span style="font-size:0.68rem; color:#38bdf8; font-weight:700;">ms</span>
+                <button type="button" class="btn-micro secondary" style="font-size:0.65rem;" onclick="resetDialogueCrossfade(${idx})" title="استفاده از تنظیم فید عمومی سناریو">
+                  پیش‌فرض
+                </button>
+              </div>
+            </div>
           </div>
         ` : ''}
 
@@ -2162,6 +2378,23 @@ function renderStoryDialogues() {
               >
               <span style="font-size:0.68rem; color:var(--text-muted);">ثانیه</span>
             </div>
+            ${dlg.pause_after <= 0.01 ? `
+              <div class="dialogue-cf-pill-wrap" title="تنظیم دقیق میلی‌ثانیه فید متقاطع این خط با خط بعدی (خالی = پیش‌فرض سناریو)">
+                <span class="dialogue-cf-icon">🌊 فید:</span>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="2000" 
+                  step="5" 
+                  placeholder="عمومی" 
+                  value="${dlg.crossfade_ms !== undefined && dlg.crossfade_ms !== null ? dlg.crossfade_ms : ''}" 
+                  class="dialogue-cf-inline-input"
+                  onchange="updateDialogueCrossfade(${idx}, this.value)"
+                  title="میلی‌ثانیه فید این خط (در صورت خالی بودن از فید عمومی سناریو استفاده می‌شود)"
+                >
+                <span style="font-size:0.68rem; color:#38bdf8; font-weight:700;">ms</span>
+              </div>
+            ` : ''}
           </div>
 
           <div class="dialogue-footer-actions">
@@ -2215,6 +2448,7 @@ window.insertDialogueAfter = function(idx) {
     pitch_shift: 0.0,
     num_steps: defaultSteps,
     guidance_scale: 2.0,
+    crossfade_ms: null,
     preview_url: null,
     show_tweaks: false,
   };
@@ -2273,6 +2507,24 @@ window.updateDialogueTweak = function(idx, prop, val) {
   if (storyDialogues[idx]) {
     storyDialogues[idx][prop] = val;
     storyDialogues[idx].preview_url = null;
+  }
+};
+
+window.updateDialogueCrossfade = function(idx, val) {
+  if (storyDialogues[idx]) {
+    if (val === '' || val === null || val === undefined) {
+      storyDialogues[idx].crossfade_ms = null;
+    } else {
+      storyDialogues[idx].crossfade_ms = Math.max(0, Math.min(2000, parseInt(val) || 0));
+    }
+    renderStoryDialogues();
+  }
+};
+
+window.resetDialogueCrossfade = function(idx) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].crossfade_ms = null;
+    renderStoryDialogues();
   }
 };
 
@@ -2705,7 +2957,9 @@ async function generateFullStory() {
 
   const title = document.getElementById('story-title-input')?.value?.trim() || 'داستان صوتی و دیالوگ';
   const outputFormat = document.getElementById('story-output-format')?.value || 'mp3';
-  const crossfadeMs = parseInt(document.getElementById('story-crossfade-select')?.value ?? 120);
+  const crossfadeInput = document.getElementById('story-crossfade-number');
+  const crossfadeSlider = document.getElementById('story-crossfade-slider');
+  const crossfadeMs = parseInt(crossfadeInput?.value || crossfadeSlider?.value || 120);
   const trimSilence = document.getElementById('story-chk-trim-silence')?.checked ?? true;
 
   const btnGenerateStory = document.getElementById('btn-generate-full-story');
@@ -2740,6 +2994,7 @@ async function generateFullStory() {
       repeat_count: Math.max(1, d.repeat_count || 1),
       num_steps: d.num_steps || 24,
       guidance_scale: d.guidance_scale || 2.0,
+      crossfade_ms: (typeof d.crossfade_ms === 'number' && !isNaN(d.crossfade_ms)) ? d.crossfade_ms : crossfadeMs,
     };
   });
 

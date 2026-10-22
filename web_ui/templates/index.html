@@ -6,7 +6,7 @@
   <title>OmniVoice AI Studio | استودیوی پیشرفته شبیه‌سازی و طراحی صدا</title>
   
   <link rel="stylesheet" href="/static/css/variables.css">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.1">
 </head>
 <body class="studio-body">
 
@@ -104,6 +104,10 @@
                   <span>▶️ تست صدا</span>
                 </button>
                 <audio id="audio-profile-greeting" style="display:none;"></audio>
+
+                <button id="btn-edit-selected-profile" type="button" class="btn-ghost-sm" title="ویرایش مشخصات این گوینده">
+                  <span>✏️ ویرایش</span>
+                </button>
 
                 <button id="btn-nav-to-profiles" type="button" class="btn-ghost-sm" title="مدیریت و افزودن گوینده جدید">
                   <span>➕ گوینده جدید</span>
@@ -572,14 +576,45 @@
                 <option value="flac">💎 FLAC (بدون افت کیفیت)</option>
               </select>
             </div>
-            <div class="story-meta-field">
-              <label for="story-crossfade-select">فید و انتقال (Crossfade):</label>
-              <select id="story-crossfade-select" class="form-select-sm" title="هم‌پوشانی و فید نرم بین صداها برای جلوگیری از افتادن سکوت">
-                <option value="120" selected>🌊 فید متقاطع نرم (120ms - پیوسته)</option>
-                <option value="60">🌊 فید متقاطع سریع (60ms)</option>
-                <option value="200">🌊 فید متقاطع عمیق (200ms)</option>
-                <option value="0">⚡ برش مستقیم لبه به لبه (0ms)</option>
-              </select>
+            <div class="story-meta-field story-crossfade-precision-box">
+              <div class="story-crossfade-header">
+                <label for="story-crossfade-number">فید متقاطع (Crossfade):</label>
+                <span id="story-crossfade-badge" class="badge-precision" title="میزان هم‌پوشانی و فید نرم بین صداها">120 ms</span>
+              </div>
+              <div class="story-crossfade-controls">
+                <input 
+                  type="range" 
+                  id="story-crossfade-slider" 
+                  min="0" 
+                  max="1000" 
+                  step="5" 
+                  value="120" 
+                  class="slider-precision" 
+                  title="تنظیم اسلایدر فید با دقت ۵ میلی‌ثانیه"
+                >
+                <div class="story-crossfade-input-group">
+                  <input 
+                    type="number" 
+                    id="story-crossfade-number" 
+                    min="0" 
+                    max="2000" 
+                    step="5" 
+                    value="120" 
+                    class="form-input-sm number-precision" 
+                    title="تایپ مستقیم میلی‌ثانیه فید (مثلاً: 120)"
+                  >
+                  <span class="precision-unit">ms</span>
+                </div>
+              </div>
+              <!-- Quick Precision Preset Chips -->
+              <div class="crossfade-preset-chips" id="story-crossfade-preset-chips">
+                <button type="button" class="cf-chip" data-ms="0" title="برش مستقیم لبه به لبه">⚡ 0ms</button>
+                <button type="button" class="cf-chip" data-ms="40" title="فید سریع">40ms</button>
+                <button type="button" class="cf-chip active" data-ms="120" title="فید نرم استاندارد">120ms</button>
+                <button type="button" class="cf-chip" data-ms="250" title="انتقال روان داستانی">250ms</button>
+                <button type="button" class="cf-chip" data-ms="500" title="سینمایی عمیق">500ms</button>
+                <button type="button" class="cf-chip" data-ms="800" title="محو تدریجی طولانی">800ms</button>
+              </div>
             </div>
             <div class="story-meta-field">
               <label for="story-global-pause-select">مکث پیش‌فرض بین خطوط:</label>
@@ -1164,8 +1199,74 @@
     </div>
   </div>
 
+  <!-- ===============================================================
+       4. EDIT SPEAKER PROFILE MODAL (ویرایش مشخصات گوینده)
+       =============================================================== -->
+  <div id="edit-profile-modal" class="modal-overlay" style="display:none; z-index:99996;">
+    <div class="edit-profile-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-icon-badge">✏️</span>
+          <div>
+            <h3 class="modal-title">ویرایش مشخصات گوینده</h3>
+            <p class="modal-sub">نام، ویژگی‌ها، تطابق تار صوتی (CFG) و متون مرجع این گوینده را ویرایش نمایید.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-edit-profile-modal" class="btn-modal-close" title="بستن">✕</button>
+      </div>
+
+      <div class="edit-profile-body" style="padding:1.1rem; display:flex; flex-direction:column; gap:0.75rem;">
+        <input type="hidden" id="edit-prof-id">
+
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">نام گوینده: <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="edit-prof-name" class="form-input-sm" required placeholder="مثلاً: صدای جومونگ، خر شرک، علی...">
+        </div>
+
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">توضیحات و لحن گوینده:</label>
+          <input type="text" id="edit-prof-desc" class="form-input-sm" placeholder="مثلاً: استخراج‌شده از فیلم با لحن طنز و شفاف">
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="form-group-compact">
+            <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">میزان تطابق (CFG Scale):</label>
+            <input type="number" id="edit-prof-cfg" step="0.1" min="1.0" max="5.0" class="form-input-sm" value="2.0">
+          </div>
+          <div class="form-group-compact">
+            <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">گام‌های دیفیوژن (کیفیت):</label>
+            <select id="edit-prof-steps" class="form-select-sm">
+              <option value="24">⚡ سریع (۲۴ گام)</option>
+              <option value="32">🎯 متعادل (۳۲ گام)</option>
+              <option value="36">💎 دقیق استودیویی (۳۶ گام)</option>
+              <option value="48">✨ وضوح عالی (۴۸ گام)</option>
+              <option value="64">🔥 حداکثر تار صوتی (۶۴ گام)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">متن پیام نمونه / تستی (Greeting Text):</label>
+          <textarea id="edit-prof-greeting" class="form-input-sm" rows="2" style="resize:vertical;" placeholder="متنی که هنگام تست صدای گوینده پخش می‌شود"></textarea>
+        </div>
+
+        <div class="form-group-compact">
+          <label style="font-size:0.8rem; font-weight:700; color:var(--text-main);">متن کلام فایل مرجع (Reference Text Whisper):</label>
+          <textarea id="edit-prof-ref-text" class="form-input-sm" rows="2" style="resize:vertical;" placeholder="متن کلام دقیق صحبت گوینده در فایل مرجع"></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem; padding:0.75rem 1.1rem; border-top:1px solid var(--border-subtle); background:var(--bg-card);">
+        <button type="button" id="btn-cancel-edit-profile" class="btn-micro secondary">انصراف</button>
+        <button type="button" id="btn-confirm-save-edit-profile" class="btn-glow-primary">
+          <span>💾</span><span>ذخیره تغییرات</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- JavaScript Modules -->
   <script src="/static/js/audio-editor.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=2.1"></script>
 </body>
 </html>

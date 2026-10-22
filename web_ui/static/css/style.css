@@ -3017,5 +3017,198 @@ html, body {
   animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* =====================================================================
+   EDIT PROFILE MODAL
+   ===================================================================== */
+.edit-profile-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: var(--radius-md);
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 30px rgba(139, 92, 246, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* =====================================================================
+   HIGH-PRECISION STORY CROSSFADE CONTROLS
+   ===================================================================== */
+.story-crossfade-precision-box {
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.story-crossfade-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.story-crossfade-header label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.badge-precision {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill, 20px);
+  letter-spacing: 0.5px;
+  font-family: monospace, var(--font-sans);
+  direction: ltr;
+}
+
+.story-crossfade-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.slider-precision {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider-precision::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.7);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.slider-precision::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+
+.story-crossfade-input-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  direction: ltr;
+}
+
+.number-precision {
+  width: 56px !important;
+  text-align: center;
+  padding: 0.25rem 0.3rem !important;
+  font-weight: 700;
+  font-family: monospace, var(--font-sans);
+  color: #38bdf8 !important;
+  background: var(--bg-surface-elevated) !important;
+  border: 1px solid var(--border-subtle) !important;
+  direction: ltr;
+}
+
+.number-precision:focus {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3) !important;
+}
+
+.precision-unit {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.crossfade-preset-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.cf-chip {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  direction: ltr;
+}
+
+.cf-chip:hover {
+  background: var(--bg-surface-elevated);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: var(--text-primary);
+}
+
+.cf-chip.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 800;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.25);
+}
+
+/* Per-Dialogue Inline Crossfade Pill */
+.dialogue-cf-pill-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  margin-right: 4px;
+  direction: ltr;
+}
+
+.dialogue-cf-icon {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.dialogue-cf-inline-input {
+  width: 50px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  padding: 2px 4px;
+  text-align: center;
+  font-weight: 700;
+  font-family: monospace, var(--font-sans);
+}
+
+.dialogue-cf-inline-input:focus {
+  border-color: #38bdf8;
+  outline: none;
+}
+
+
 
 
