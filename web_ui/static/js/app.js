@@ -1356,6 +1356,85 @@ function initFormActions() {
     });
   }
 
+  // -------------------------------------------------------------
+  // Custom Output Directory & Format Persistence
+  // -------------------------------------------------------------
+  const savedOutputDir = localStorage.getItem('omnivoice_custom_output_dir') || '';
+  const dirInputs = [
+    document.getElementById('profile-custom-dir'),
+    document.getElementById('clone-custom-dir'),
+    document.getElementById('story-custom-dir'),
+  ].filter(Boolean);
+
+  dirInputs.forEach(input => {
+    if (savedOutputDir) input.value = savedOutputDir;
+    input.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      localStorage.setItem('omnivoice_custom_output_dir', val);
+      dirInputs.forEach(other => {
+        if (other !== input) other.value = val;
+      });
+    });
+  });
+
+  const openFolderHelper = async (folderPath) => {
+    try {
+      const res = await fetch('/api/system/open-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: folderPath || '' }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert('خطا در باز کردن پوشه: ' + (data.error || 'پوشه یافت نشد.'));
+      }
+    } catch (e) {
+      alert('خطا در ارتباط با سیستم: ' + e.message);
+    }
+  };
+
+  const bindBrowseBtn = (btnId, inputId) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const p = document.getElementById(inputId)?.value?.trim() || '';
+        openFolderHelper(p);
+      });
+    }
+  };
+
+  bindBrowseBtn('btn-browse-profile-dir', 'profile-custom-dir');
+  bindBrowseBtn('btn-browse-clone-dir', 'clone-custom-dir');
+  bindBrowseBtn('btn-browse-story-dir', 'story-custom-dir');
+
+  const btnOpenResultFolder = document.getElementById('btn-open-result-folder');
+  if (btnOpenResultFolder) {
+    btnOpenResultFolder.addEventListener('click', () => {
+      const p = btnOpenResultFolder.dataset.path || document.getElementById('result-saved-path')?.textContent || '';
+      openFolderHelper(p);
+    });
+  }
+
+  const getActiveExportOptions = (mode) => {
+    let fmt = 'mp3';
+    let customName = '';
+    let customDir = localStorage.getItem('omnivoice_custom_output_dir') || '';
+
+    if (mode === 'profile') {
+      fmt = document.getElementById('profile-output-format')?.value || 'mp3';
+      customName = document.getElementById('profile-custom-filename')?.value?.trim() || '';
+      const dirVal = document.getElementById('profile-custom-dir')?.value?.trim();
+      if (dirVal) customDir = dirVal;
+    } else {
+      fmt = document.getElementById('clone-output-format')?.value || document.getElementById('profile-output-format')?.value || 'mp3';
+      customName = document.getElementById('clone-custom-filename')?.value?.trim() || document.getElementById('profile-custom-filename')?.value?.trim() || '';
+      const dirVal = document.getElementById('clone-custom-dir')?.value?.trim() || document.getElementById('profile-custom-dir')?.value?.trim();
+      if (dirVal) customDir = dirVal;
+    }
+
+    return { fmt, customName, customDir };
+  };
+
   // Ctrl + Enter shortcut support on textareas
   const cloneTextarea = document.getElementById('clone-target-text');
   if (cloneTextarea) {
@@ -1420,6 +1499,11 @@ function initFormActions() {
       formData.append('timbre_strength', timbreStrength);
       formData.append('denoise', denoise);
 
+      const expOpts = getActiveExportOptions(activeCloneMode);
+      formData.append('output_format', expOpts.fmt);
+      if (expOpts.customName) formData.append('custom_filename', expOpts.customName);
+      if (expOpts.customDir) formData.append('custom_output_dir', expOpts.customDir);
+
       if (activeCloneMode === 'profile') {
         const selectProfEl = document.getElementById('select-saved-profile');
         const profileId = selectProfEl ? selectProfEl.value : null;
@@ -1483,6 +1567,11 @@ function initFormActions() {
       mmsFormData.append('pitch_shift', pitchShift);
       mmsFormData.append('normalize_volume', normalizeVol);
 
+      const expOpts = getActiveExportOptions(activeCloneMode);
+      mmsFormData.append('output_format', expOpts.fmt);
+      if (expOpts.customName) mmsFormData.append('custom_filename', expOpts.customName);
+      if (expOpts.customDir) mmsFormData.append('custom_output_dir', expOpts.customDir);
+
       await startGenerationTask('/api/native-tts', mmsFormData);
       return;
     }
@@ -1514,6 +1603,12 @@ function initFormActions() {
       formData.append('seed', seed);
       formData.append('denoise', denoise);
       formData.append('normalize_volume', normalizeVol);
+
+      // Append custom export settings
+      const expOpts = getActiveExportOptions('profile');
+      formData.append('output_format', expOpts.fmt);
+      if (expOpts.customName) formData.append('custom_filename', expOpts.customName);
+      if (expOpts.customDir) formData.append('custom_output_dir', expOpts.customDir);
 
       startGenerationTask(`/api/profiles/${profileId}/generate`, formData);
 
@@ -1549,6 +1644,12 @@ function initFormActions() {
       formData.append('seed', seed);
       formData.append('denoise', denoise);
       formData.append('normalize_volume', normalizeVol);
+
+      // Append custom export settings
+      const expOpts = getActiveExportOptions('custom');
+      formData.append('output_format', expOpts.fmt);
+      if (expOpts.customName) formData.append('custom_filename', expOpts.customName);
+      if (expOpts.customDir) formData.append('custom_output_dir', expOpts.customDir);
 
       formData.append('save_as_profile', 'false');
       await startGenerationTask('/api/clone', formData);
@@ -1689,7 +1790,10 @@ function showResult(item) {
   const durBadge = document.getElementById('result-duration-badge');
   const timeBadge = document.getElementById('result-time-badge');
   const rtfBadge = document.getElementById('result-rtf-badge');
+  const formatBadge = document.getElementById('result-format-badge');
   const downloadLink = document.getElementById('btn-download-result');
+  const savedPathEl = document.getElementById('result-saved-path');
+  const btnOpenFolder = document.getElementById('btn-open-result-folder');
 
   if (idleCard) idleCard.style.display = 'none';
 
@@ -1698,10 +1802,31 @@ function showResult(item) {
   if (durBadge) durBadge.textContent = `طول صوت: ${item.duration_sec}s`;
   if (timeBadge) timeBadge.textContent = `پردازش: ${item.elapsed_sec}s`;
   if (rtfBadge) rtfBadge.textContent = `RTF: ${item.rtf}x`;
+
+  const ext = (item.format || (item.audio_url && item.audio_url.split('.').pop()) || 'mp3').toLowerCase();
+  if (formatBadge) {
+    formatBadge.textContent = ext.toUpperCase();
+  }
+
+  const savedPath = item.saved_path || item.audio_url;
+  if (savedPathEl) {
+    savedPathEl.textContent = savedPath;
+    savedPathEl.title = savedPath;
+  }
+  if (btnOpenFolder) {
+    btnOpenFolder.dataset.path = savedPath;
+  }
+
   if (downloadLink) {
-    const ext = item.format || (item.audio_url && item.audio_url.split('.').pop()) || 'mp3';
     downloadLink.href = item.audio_url;
-    downloadLink.download = `omnivoice_${item.id}.${ext}`;
+    let dlName = `omnivoice_${item.id}.${ext}`;
+    if (item.saved_path) {
+      const parts = item.saved_path.replace(/\\/g, '/').split('/');
+      if (parts.length > 0 && parts[parts.length - 1]) {
+        dlName = parts[parts.length - 1];
+      }
+    }
+    downloadLink.download = dlName;
     const dlLabel = document.getElementById('btn-download-label');
     if (dlLabel) {
       dlLabel.textContent = `دانلود صوت با کیفیت استودیویی (${ext.toUpperCase()})`;
@@ -2999,12 +3124,20 @@ async function generateFullStory() {
   });
 
   try {
+    const customFilename = document.getElementById('story-custom-filename')?.value?.trim() || '';
+    const customOutputDir = document.getElementById('story-custom-dir')?.value?.trim() || localStorage.getItem('omnivoice_custom_output_dir') || '';
+    if (customOutputDir) {
+      localStorage.setItem('omnivoice_custom_output_dir', customOutputDir);
+    }
+
     const res = await fetch('/api/story/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: title,
         output_format: outputFormat,
+        custom_filename: customFilename,
+        custom_output_dir: customOutputDir,
         crossfade_ms: crossfadeMs,
         trim_silence: trimSilence,
         dialogues: dialoguesPayload,
@@ -3017,6 +3150,7 @@ async function generateFullStory() {
       const resultItem = {
         id: data.story_id,
         audio_url: data.audio_url,
+        saved_path: data.saved_path,
         format: data.format || outputFormat,
         text: `داستان صوتی «${data.title}» (${(data.format || outputFormat).toUpperCase()}) - شامل ${storyDialogues.length} دیالوگ با فید متقاطع و پیوستگی کامل`,
         duration_sec: data.duration_sec,

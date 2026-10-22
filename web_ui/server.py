@@ -6,6 +6,8 @@ import json
 import asyncio
 import logging
 import shutil
+import re
+import subprocess
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -143,6 +145,103 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 app.mount("/profiles", StaticFiles(directory=str(PROFILES_DIR)), name="profiles")
 
 PROFILES_PROMPT_CACHE: Dict[str, VoiceClonePrompt] = {}
+
+def save_output_audio(
+    wav_data: np.ndarray,
+    task_id: str,
+    prefix: str = "output",
+    format_choice: str = "mp3",
+    sample_rate: int = 24000,
+    custom_filename: Optional[str] = None,
+    custom_output_dir: Optional[str] = None,
+) -> Tuple[Path, str, Optional[str]]:
+    """
+    Saves audio to disk in requested format (mp3, wav, flac, ogg) with:
+    - custom_filename (e.g. 'my_speech' or 'line_1')
+    - custom_output_dir (e.g. 'C:\\Users\\ASUS\\Desktop\\AudioOutputs')
+    Returns: (primary_out_path, primary_url, custom_saved_path)
+    """
+    fmt = (format_choice or "mp3").lower().strip()
+    if fmt not in ["mp3", "wav", "flac", "ogg"]:
+        fmt = "mp3"
+    ext = fmt
+
+    # Determine base filename
+    if custom_filename and str(custom_filename).strip():
+        # Sanitize filename: remove illegal Windows characters \ / : * ? " < > |
+        base_clean = re.sub(r'[\\/*?:"<>|]', "", str(custom_filename).strip())
+        for e in [".mp3", ".wav", ".flac", ".ogg"]:
+            if base_clean.lower().endswith(e):
+                base_clean = base_clean[:-len(e)]
+                break
+        if not base_clean:
+            base_clean = f"{prefix}_{task_id}"
+        out_filename = f"{base_clean}.{ext}"
+    else:
+        out_filename = f"{prefix}_{task_id}.{ext}"
+
+    # Always ensure primary copy in OUTPUTS_DIR for instant browser playback/streaming
+    primary_out_path = OUTPUTS_DIR / out_filename
+    out_url = f"/outputs/{out_filename}"
+
+    sf_format = {
+        "mp3": "MP3",
+        "wav": "WAV",
+        "flac": "FLAC",
+        "ogg": "OGG"
+    }.get(fmt, "MP3")
+
+    sf.write(str(primary_out_path), wav_data, sample_rate, format=sf_format)
+
+    custom_saved_str = None
+    if custom_output_dir and str(custom_output_dir).strip():
+        try:
+            target_dir = Path(str(custom_output_dir).strip()).expanduser().resolve()
+            target_dir.mkdir(parents=True, exist_ok=True)
+            custom_target_path = target_dir / out_filename
+            if custom_target_path.resolve() != primary_out_path.resolve():
+                sf.write(str(custom_target_path), wav_data, sample_rate, format=sf_format)
+            custom_saved_str = str(custom_target_path)
+            logger.info(f"Audio saved to custom directory: {custom_saved_str}")
+        except Exception as e:
+            logger.error(f"Error saving to custom_output_dir '{custom_output_dir}': {e}")
+
+    return primary_out_path, out_url, custom_saved_str
+
+@app.post("/api/system/open-folder")
+async def api_open_folder(request: Request):
+    """Open Windows Explorer at the folder or select the file."""
+    try:
+        data = await request.json()
+        target_path = data.get("path", "").strip()
+        if not target_path:
+            target_path = str(OUTPUTS_DIR)
+        p = Path(target_path).expanduser().resolve()
+        if p.is_file():
+            subprocess.Popen(f'explorer /select,"{str(p)}"')
+            return {"success": True, "message": f"فایل در پوشه انتخاب شد: {p}", "path": str(p)}
+        else:
+            if not p.exists():
+                p.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen(f'explorer "{str(p)}"')
+            return {"success": True, "message": f"پوشه باز شد: {p}", "path": str(p)}
+    except Exception as e:
+        logger.error(f"Error opening folder: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/system/verify-folder")
+async def api_verify_folder(request: Request):
+    """Check if a folder path is valid or can be created."""
+    try:
+        data = await request.json()
+        folder_str = data.get("path", "").strip()
+        if not folder_str:
+            return {"valid": True, "path": str(OUTPUTS_DIR), "exists": True}
+        p = Path(folder_str).expanduser().resolve()
+        exists = p.exists() and p.is_dir()
+        return {"valid": True, "path": str(p), "exists": exists}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
 
 def load_profiles_db() -> List[Dict[str, Any]]:
     if not PROFILES_JSON.exists():
@@ -511,6 +610,9 @@ async def api_clone(
     save_as_profile: bool = Form(False),
     profile_name: Optional[str] = Form(None),
     profile_desc: Optional[str] = Form(None),
+    output_format: Optional[str] = Form("mp3"),
+    custom_filename: Optional[str] = Form(None),
+    custom_output_dir: Optional[str] = Form(None),
     audio: UploadFile = File(...),
 ):
     global model, current_progress
@@ -535,8 +637,6 @@ async def api_clone(
     })
 
     ref_audio_path = OUTPUTS_DIR / f"ref_{task_id}_{audio.filename}"
-    output_audio_path = OUTPUTS_DIR / f"clone_{task_id}.wav"
-    output_audio_url = f"/outputs/clone_{task_id}.wav"
 
     try:
         content = await audio.read()
@@ -647,7 +747,15 @@ async def api_clone(
         wav_data = apply_post_mastering(
             raw_wav, 24000, pitch_shift, normalize_volume, pause_scale=pause_scale
         )
-        sf.write(str(output_audio_path), wav_data, 24000)
+        out_audio_path, output_audio_url, custom_saved_path = save_output_audio(
+            wav_data,
+            task_id,
+            prefix="clone",
+            format_choice=output_format,
+            sample_rate=24000,
+            custom_filename=custom_filename,
+            custom_output_dir=custom_output_dir,
+        )
 
         dt = round(time.time() - t_start, 2)
         audio_dur = round(len(wav_data) / 24000.0, 2)
@@ -690,6 +798,8 @@ async def api_clone(
             "mode": "Voice Clone",
             "text": text,
             "audio_url": output_audio_url,
+            "saved_path": custom_saved_path or str(out_audio_path),
+            "format": (output_format or "mp3").lower(),
             "duration_sec": audio_dur,
             "elapsed_sec": dt,
             "rtf": rtf,
@@ -1099,6 +1209,9 @@ async def api_generate_from_profile(
     seed: int = Form(-1),
     pitch_shift: float = Form(0.0),
     normalize_volume: bool = Form(True),
+    output_format: Optional[str] = Form("mp3"),
+    custom_filename: Optional[str] = Form(None),
+    custom_output_dir: Optional[str] = Form(None),
 ):
     global model, current_progress
     if model is None:
@@ -1121,8 +1234,6 @@ async def api_generate_from_profile(
     speaker_name = prof_meta["name"] if prof_meta else "گوینده انتخابی"
 
     task_id = uuid.uuid4().hex[:8]
-    output_audio_path = OUTPUTS_DIR / f"profile_{profile_id}_{task_id}.wav"
-    output_audio_url = f"/outputs/profile_{profile_id}_{task_id}.wav"
 
     current_progress.update({
         "is_busy": True,
@@ -1205,7 +1316,15 @@ async def api_generate_from_profile(
         wav_data = apply_post_mastering(
             raw_wav, 24000, pitch_shift, normalize_volume, pause_scale=pause_scale
         )
-        sf.write(str(output_audio_path), wav_data, 24000)
+        out_audio_path, out_audio_url, custom_saved_path = save_output_audio(
+            wav_data,
+            task_id,
+            prefix=f"profile_{profile_id}",
+            format_choice=output_format,
+            sample_rate=24000,
+            custom_filename=custom_filename,
+            custom_output_dir=custom_output_dir,
+        )
 
         dt = round(time.time() - t_start, 2)
         audio_dur = round(len(wav_data) / 24000.0, 2)
@@ -1215,11 +1334,13 @@ async def api_generate_from_profile(
             "id": task_id,
             "mode": f"پروفایل: {speaker_name}",
             "text": text,
-            "audio_url": output_audio_url,
+            "audio_url": out_audio_url,
             "duration_sec": audio_dur,
             "elapsed_sec": dt,
             "rtf": rtf,
             "created_at": time.strftime("%H:%M:%S"),
+            "saved_path": custom_saved_path or str(out_audio_path),
+            "format": output_format or "mp3",
         }
         history_records.insert(0, result_item)
 
@@ -1278,6 +1399,9 @@ async def api_convert_voice(
     timbre_strength: float = Form(1.0),
     denoise: bool = Form(True),
     preserve_volume: bool = Form(True),
+    output_format: Optional[str] = Form("mp3"),
+    custom_filename: Optional[str] = Form(None),
+    custom_output_dir: Optional[str] = Form(None),
 ):
     """
     Intelligent Voice Conversion:
@@ -1444,8 +1568,18 @@ async def api_convert_voice(
                 except Exception as ne:
                     logger.warning(f"Normalization warning: {ne}")
 
-            src_info = sf.info(str(out_audio_path))
-            audio_dur = round(src_info.duration, 2)
+            wav_data_tc, sr_tc = sf.read(str(out_audio_path))
+            final_out_path, final_out_url, custom_saved_path = save_output_audio(
+                wav_data_tc,
+                task_id,
+                prefix="vc_tone",
+                format_choice=output_format,
+                sample_rate=sr_tc,
+                custom_filename=custom_filename,
+                custom_output_dir=custom_output_dir,
+            )
+
+            audio_dur = round(len(wav_data_tc) / float(sr_tc), 2)
             dt = round(time.time() - t_start, 2)
             rtf = round(dt / max(audio_dur, 0.01), 3)
 
@@ -1453,7 +1587,9 @@ async def api_convert_voice(
                 "id": task_id,
                 "mode": f"تغییر مستقیم جنس صدا (S2S-VC عصبی) ➔ {target_name}",
                 "text": "«تبدیل مستقیم صوت به صوت — حفظ ۱۰۰٪ ریتم، لحن، مکث، احساسات و لحن صحبت»",
-                "audio_url": out_audio_url,
+                "audio_url": final_out_url,
+                "saved_path": custom_saved_path or str(final_out_path),
+                "format": (output_format or "mp3").lower(),
                 "duration_sec": audio_dur,
                 "elapsed_sec": dt,
                 "rtf": rtf,
@@ -1543,7 +1679,15 @@ async def api_convert_voice(
 
             raw_wav = generated_audio_list[0]
             wav_data = apply_post_mastering(raw_wav, 24000, 0.0, True, pause_scale=pause_scale)
-            sf.write(str(out_audio_path), wav_data, 24000)
+            final_out_path, final_out_url, custom_saved_path = save_output_audio(
+                wav_data,
+                task_id,
+                prefix="vc_omni",
+                format_choice=output_format,
+                sample_rate=24000,
+                custom_filename=custom_filename,
+                custom_output_dir=custom_output_dir,
+            )
 
             dt = round(time.time() - t_start, 2)
             audio_dur = round(len(wav_data) / 24000.0, 2)
@@ -1553,7 +1697,9 @@ async def api_convert_voice(
                 "id": task_id,
                 "mode": f"تبدیل صدا با هوش مصنوعی (OmniVoice) ➔ {target_name}",
                 "text": f"«{clean_text[:90]}...»",
-                "audio_url": out_audio_url,
+                "audio_url": final_out_url,
+                "saved_path": custom_saved_path or str(final_out_path),
+                "format": (output_format or "mp3").lower(),
                 "duration_sec": audio_dur,
                 "elapsed_sec": dt,
                 "rtf": rtf,
@@ -1580,14 +1726,26 @@ async def api_convert_voice(
                     preserve_volume=preserve_volume,
                 )
             )
+            wav_data_dsp, sr_dsp = sf.read(str(out_audio_path))
+            final_out_path, final_out_url, custom_saved_path = save_output_audio(
+                wav_data_dsp,
+                task_id,
+                prefix="vc_dsp",
+                format_choice=output_format,
+                sample_rate=sr_dsp,
+                custom_filename=custom_filename,
+                custom_output_dir=custom_output_dir,
+            )
             dt = round(time.time() - t_start, 2)
-            audio_dur = vc_res["duration_sec"]
-            rtf = vc_res["rtf"]
+            audio_dur = round(len(wav_data_dsp) / float(sr_dsp), 2)
+            rtf = round(dt / max(audio_dur, 0.01), 3)
             result_item = {
                 "id": task_id,
                 "mode": f"تغییر فرکانس DSP ➔ {target_name}",
                 "text": f"شیفت گام: {vc_res['pitch_shift_applied']} نیم‌پرده • تار صوتی: {vc_res['target_f0']}Hz",
-                "audio_url": out_audio_url,
+                "audio_url": final_out_url,
+                "saved_path": custom_saved_path or str(final_out_path),
+                "format": (output_format or "mp3").lower(),
                 "duration_sec": audio_dur,
                 "elapsed_sec": dt,
                 "rtf": rtf,
@@ -1671,6 +1829,9 @@ async def api_native_tts(
     pause_scale: float = Form(1.0),
     pitch_shift: float = Form(0.0),
     normalize_volume: bool = Form(True),
+    output_format: Optional[str] = Form("mp3"),
+    custom_filename: Optional[str] = Form(None),
+    custom_output_dir: Optional[str] = Form(None),
 ):
     """
     Meta MMS Native Persian Broadcast Engine:
@@ -1682,8 +1843,6 @@ async def api_native_tts(
         raise HTTPException(status_code=429, detail="یک فرآیند دیگر در حال اجراست.")
 
     task_id = uuid.uuid4().hex[:8]
-    output_audio_path = OUTPUTS_DIR / f"mms_native_{task_id}.wav"
-    output_audio_url = f"/outputs/mms_native_{task_id}.wav"
 
     current_progress.update({
         "is_busy": True,
@@ -1724,7 +1883,15 @@ async def api_native_tts(
         wav_data = apply_post_mastering(
             raw_wav, 16000, pitch_shift, normalize_volume, pause_scale=pause_scale
         )
-        sf.write(str(output_audio_path), wav_data, 16000)
+        out_audio_path, output_audio_url, custom_saved_path = save_output_audio(
+            wav_data,
+            task_id,
+            prefix="mms_native",
+            format_choice=output_format,
+            sample_rate=16000,
+            custom_filename=custom_filename,
+            custom_output_dir=custom_output_dir,
+        )
 
         dt = round(time.time() - t_start, 2)
         audio_dur = round(len(wav_data) / 16000.0, 2)
@@ -1735,6 +1902,8 @@ async def api_native_tts(
             "mode": "گوینده رسمی فارسی (Meta MMS)",
             "text": text,
             "audio_url": output_audio_url,
+            "saved_path": custom_saved_path or str(out_audio_path),
+            "format": (output_format or "mp3").lower(),
             "duration_sec": audio_dur,
             "elapsed_sec": dt,
             "rtf": rtf,
@@ -1931,38 +2100,6 @@ def synthesize_dialogue_line(
     return apply_post_mastering(raw_wav, sample_rate=24000, pitch_shift_steps=pitch_shift, normalize_volume=True)
 
 
-def save_output_audio(
-    wav_data: np.ndarray,
-    task_id: str,
-    prefix: str = "output",
-    format_choice: str = "mp3",
-    sample_rate: int = 24000,
-) -> Tuple[Path, str]:
-    """
-    Saves audio to disk in requested format (mp3, wav, flac, ogg) and returns (path, url).
-    Defaults to mp3 for lightweight web streaming and universal playback.
-    """
-    fmt = (format_choice or "mp3").lower().strip()
-    if fmt not in ["mp3", "wav", "flac", "ogg"]:
-        fmt = "mp3"
-
-    ext = fmt
-    out_filename = f"{prefix}_{task_id}.{ext}"
-    out_path = OUTPUTS_DIR / out_filename
-    out_url = f"/outputs/{out_filename}"
-
-    if fmt == "mp3":
-        sf.write(str(out_path), wav_data, sample_rate, format="MP3")
-    elif fmt == "flac":
-        sf.write(str(out_path), wav_data, sample_rate, format="FLAC")
-    elif fmt == "ogg":
-        sf.write(str(out_path), wav_data, sample_rate, format="OGG")
-    else:
-        sf.write(str(out_path), wav_data, sample_rate, format="WAV")
-
-    return out_path, out_url
-
-
 def trim_head_tail_silence(
     wav: np.ndarray,
     sample_rate: int = 24000,
@@ -2132,7 +2269,7 @@ async def api_story_preview_line(request: Request):
         )
 
         trimmed_wav = trim_head_tail_silence(wav, sample_rate=24000, pad_ms=30)
-        out_path, out_url = save_output_audio(
+        out_path, out_url, _ = save_output_audio(
             trimmed_wav, task_id, prefix="line", format_choice=output_format, sample_rate=24000
         )
         dur = round(len(trimmed_wav) / 24000.0, 2)
@@ -2247,12 +2384,17 @@ async def api_story_generate(request: Request):
             sample_rate=24000,
         )
 
-        out_audio_path, out_audio_url = save_output_audio(
+        custom_filename = data.get("custom_filename")
+        custom_output_dir = data.get("custom_output_dir")
+
+        out_audio_path, out_audio_url, custom_saved_path = save_output_audio(
             master_wav,
             task_id,
             prefix="story",
             format_choice=output_format,
             sample_rate=24000,
+            custom_filename=custom_filename,
+            custom_output_dir=custom_output_dir,
         )
 
         dt = round(time.time() - t_start, 2)
@@ -2264,6 +2406,7 @@ async def api_story_generate(request: Request):
             "mode": f"داستان صوتی و دیالوگ چندنفره: «{title}» ({output_format.upper()})",
             "text": f"سناریوی چندنفره شامل {len(generated_wavs)} دیالوگ با فید متقاطع و میکس نهایی",
             "audio_url": out_audio_url,
+            "saved_path": custom_saved_path or str(out_audio_path),
             "format": output_format,
             "duration_sec": total_dur,
             "elapsed_sec": dt,
@@ -2285,6 +2428,7 @@ async def api_story_generate(request: Request):
             "story_id": task_id,
             "title": title,
             "audio_url": out_audio_url,
+            "saved_path": custom_saved_path or str(out_audio_path),
             "format": output_format,
             "duration_sec": total_dur,
             "timeline": timeline,

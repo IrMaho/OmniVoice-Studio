@@ -115,6 +115,38 @@
               </div>
             </div>
 
+            <!-- Profile Export & Storage Customization Bar -->
+            <div class="profile-export-bar">
+              <div class="export-field-group">
+                <label for="profile-output-format" class="export-label">
+                  <span>💽 فرمت خروجی:</span>
+                </label>
+                <select id="profile-output-format" class="form-select-sm export-format-select" title="فرمت فایل صوتی خروجی">
+                  <option value="mp3" selected>🎵 MP3 (پیش‌فرض سبک و استودیویی)</option>
+                  <option value="wav">🎙️ WAV (کیفیت خام استودیویی ۲۴kHz)</option>
+                  <option value="flac">💎 FLAC (بدون افت کیفیت Lossless)</option>
+                  <option value="ogg">📻 OGG (فشرده باکیفیت و استاندارد وب)</option>
+                </select>
+              </div>
+
+              <div class="export-field-group">
+                <label for="profile-custom-filename" class="export-label">
+                  <span>🏷️ نام دلخواه فایل:</span>
+                </label>
+                <input type="text" id="profile-custom-filename" class="form-input-sm export-filename-input" placeholder="مثلاً: interview_part1 (اختیاری)">
+              </div>
+
+              <div class="export-field-group export-dir-group">
+                <label for="profile-custom-dir" class="export-label">
+                  <span>📂 مسیر ذخیره‌سازی خروجی‌ها:</span>
+                </label>
+                <div class="export-dir-input-wrap">
+                  <input type="text" id="profile-custom-dir" class="form-input-sm export-dir-input" placeholder="مثلاً: C:\OmniVoice\Outputs (پیش‌فرض: outputs/)">
+                  <button type="button" id="btn-browse-profile-dir" class="btn-micro-dir" title="بررسی یا باز کردن پوشه در ویندوز">📂 باز کردن پوشه</button>
+                </div>
+              </div>
+            </div>
+
             <!-- Hidden compatibility card for JS references -->
             <div id="selected-profile-preview-card" style="display:none;">
               <span id="selected-profile-name"></span>
@@ -416,6 +448,30 @@
               </div>
               <input type="range" id="clone-cfg-slider" class="range-slider-sm" min="1.2" max="3.5" step="0.1" value="2.0">
             </div>
+
+            <!-- Custom Clone Export Format & Custom Filename -->
+            <div class="setting-item clone-export-format-item">
+              <label class="setting-label">فرمت خروجی صوت:</label>
+              <select id="clone-output-format" class="form-select-sm" title="فرمت فایل خروجی">
+                <option value="mp3" selected>🎵 MP3 (پیش‌فرض سبک و استودیویی)</option>
+                <option value="wav">🎙️ WAV (کیفیت خام استودیویی)</option>
+                <option value="flac">💎 FLAC (بدون افت کیفیت Lossless)</option>
+                <option value="ogg">📻 OGG (فشرده باکیفیت)</option>
+              </select>
+            </div>
+
+            <div class="setting-item clone-export-filename-item">
+              <label class="setting-label">نام دلخواه فایل:</label>
+              <input type="text" id="clone-custom-filename" class="form-input-sm" placeholder="مثلاً: clone_take1 (اختیاری)">
+            </div>
+
+            <div class="setting-item clone-export-dir-item" style="grid-column: span 2;">
+              <label class="setting-label">مسیر ذخیره‌سازی در ویندوز:</label>
+              <div class="export-dir-input-wrap">
+                <input type="text" id="clone-custom-dir" class="form-input-sm" placeholder="مثلاً: C:\OmniVoice\Outputs (پیش‌فرض: outputs/)">
+                <button type="button" id="btn-browse-clone-dir" class="btn-micro-dir" title="بررسی یا باز کردن پوشه در ویندوز">📂 باز کردن پوشه</button>
+              </div>
+            </div>
           </div>
 
           <!-- Advanced Studio Controls Drawer Toggle -->
@@ -573,8 +629,20 @@
               <select id="story-output-format" class="form-select-sm" title="فرمت فایل صوتی نهایی">
                 <option value="mp3" selected>🎵 MP3 (پیش‌فرض سبک و استودیویی)</option>
                 <option value="wav">🎙️ WAV (کیفیت خام استودیویی ۲۴kHz)</option>
-                <option value="flac">💎 FLAC (بدون افت کیفیت)</option>
+                <option value="flac">💎 FLAC (بدون افت کیفیت Lossless)</option>
+                <option value="ogg">📻 OGG (فشرده باکیفیت)</option>
               </select>
+            </div>
+            <div class="story-meta-field">
+              <label for="story-custom-filename">نام دلخواه فایل سناریو:</label>
+              <input type="text" id="story-custom-filename" class="form-input-sm" placeholder="مثلاً: story_episode1 (اختیاری)">
+            </div>
+            <div class="story-meta-field" style="grid-column: span 2;">
+              <label for="story-custom-dir">مسیر ذخیره‌سازی داستان در ویندوز:</label>
+              <div class="export-dir-input-wrap">
+                <input type="text" id="story-custom-dir" class="form-input-sm" placeholder="مثلاً: C:\OmniVoice\Outputs (پیش‌فرض: outputs/)">
+                <button type="button" id="btn-browse-story-dir" class="btn-micro-dir" title="بررسی یا باز کردن پوشه در ویندوز">📂 باز کردن پوشه</button>
+              </div>
             </div>
             <div class="story-meta-field story-crossfade-precision-box">
               <div class="story-crossfade-header">
@@ -913,6 +981,7 @@
 
           <!-- Metrics badges -->
           <div class="result-metrics-row">
+            <span id="result-format-badge" class="metric-chip format-chip">MP3</span>
             <span id="result-duration-badge" class="metric-chip">طول صوت: 0s</span>
             <span id="result-time-badge" class="metric-chip accent">پردازش: 0s</span>
             <span id="result-rtf-badge" class="metric-chip success">RTF: 0x</span>
@@ -924,10 +993,24 @@
             <p id="result-text-preview" class="result-text-content"></p>
           </div>
 
+          <!-- Saved local location & Windows Explorer trigger -->
+          <div id="result-saved-location-wrap" class="result-saved-location-strip">
+            <div class="saved-location-header">
+              <span class="saved-location-icon">📂</span>
+              <span class="saved-location-title">محل ذخیره روی سیستم شما:</span>
+            </div>
+            <div class="saved-location-box">
+              <code id="result-saved-path">outputs/omnivoice_output.mp3</code>
+              <button type="button" id="btn-open-result-folder" class="btn-micro-action" title="نمایش و انتخاب فایل در پوشه ویندوز">
+                <span>📂 باز کردن پوشه</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Download button -->
-          <a id="btn-download-result" href="#" download="omnivoice_output.wav" class="btn-download-wav">
+          <a id="btn-download-result" href="#" download="omnivoice_output.mp3" class="btn-download-wav">
             <span>💾</span>
-            <span>دانلود صوت با کیفیت استودیویی (WAV 24kHz)</span>
+            <span id="btn-download-label">دانلود صوت با کیفیت استودیویی</span>
           </a>
         </div>
 
