@@ -273,9 +273,11 @@ function initInputTypeSwitcher() {
     btnText.classList.remove('active');
     if (sectionText) sectionText.style.display = 'none';
     if (sectionVc) sectionVc.style.display = 'flex';
-    if (stripSettings) stripSettings.style.display = 'none';
-    if (submitLabel) {
-      submitLabel.textContent = '🔄 تبدیل مستقیم این صدا به صدای من (Voice Conversion)';
+    if (window._updateVcEngineUI) {
+      window._updateVcEngineUI();
+    } else {
+      if (stripSettings) stripSettings.style.display = 'grid';
+      if (submitLabel) submitLabel.textContent = '👑 تبدیل با صدای ۱۰۰٪ خالص کلون‌شده (حداکثر شباهت استودیویی)';
     }
   });
 }
@@ -304,25 +306,27 @@ function initVoiceConversionUI() {
   const submitLabel = document.getElementById('btn-generate-clone-label') || document.getElementById('btn-clone-label');
 
   const updateEngineUI = () => {
-    const isTone = engineToneRadio && engineToneRadio.checked;
-    if (labelEngineTone) {
-      labelEngineTone.style.borderColor = isTone ? 'var(--color-primary)' : 'var(--border-color)';
-      labelEngineTone.style.background = isTone ? 'rgba(99,102,241,0.16)' : 'var(--bg-input)';
-    }
+    const isOmni = engineOmniRadio && engineOmniRadio.checked;
     if (labelEngineOmni) {
-      labelEngineOmni.style.borderColor = !isTone ? 'var(--color-primary)' : 'var(--border-color)';
-      labelEngineOmni.style.background = !isTone ? 'rgba(99,102,241,0.16)' : 'var(--bg-input)';
+      labelEngineOmni.style.borderColor = isOmni ? 'var(--color-primary)' : 'var(--border-color)';
+      labelEngineOmni.style.background = isOmni ? 'rgba(99,102,241,0.18)' : 'var(--bg-input)';
     }
-    if (timbreStrengthRow) timbreStrengthRow.style.display = isTone ? 'flex' : 'none';
+    if (labelEngineTone) {
+      labelEngineTone.style.borderColor = !isOmni ? 'var(--color-primary)' : 'var(--border-color)';
+      labelEngineTone.style.background = !isOmni ? 'rgba(99,102,241,0.18)' : 'var(--bg-input)';
+    }
+    if (timbreStrengthRow) timbreStrengthRow.style.display = !isOmni ? 'flex' : 'none';
     if (stripSettings && activeInputType === 'voice_convert') {
-      stripSettings.style.display = !isTone ? 'grid' : 'none';
+      stripSettings.style.display = isOmni ? 'grid' : 'none';
     }
     if (submitLabel && activeInputType === 'voice_convert') {
-      submitLabel.textContent = isTone
-        ? '🌟 تبدیل مستقیم جنس صدا (حفظ ۱۰۰٪ لحن و ریتم بدون نیاز به متن)'
-        : '🔄 سنتز متنی با فلو مچینگ OmniVoice (بازخوانی با دیفیوژن)';
+      submitLabel.textContent = isOmni
+        ? '👑 تبدیل با صدای ۱۰۰٪ خالص کلون‌شده (حداکثر شباهت استودیویی)'
+        : '🎭 انتقال مستقیم لحن و تحریرها (Tone Color Converter)';
     }
   };
+
+  window._updateVcEngineUI = updateEngineUI;
 
   if (engineToneRadio) engineToneRadio.addEventListener('change', updateEngineUI);
   if (engineOmniRadio) engineOmniRadio.addEventListener('change', updateEngineUI);

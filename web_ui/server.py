@@ -1083,7 +1083,7 @@ async def api_convert_voice(
     source_audio: UploadFile = File(...),
     profile_id: Optional[str] = Form(None),
     ref_audio: Optional[UploadFile] = File(None),
-    convert_engine: str = Form("tone_color"),
+    convert_engine: str = Form("omnivoice"),
     transcribed_text: Optional[str] = Form(None),
     guidance_scale: float = Form(2.0),
     num_steps: int = Form(36),
@@ -1096,11 +1096,10 @@ async def api_convert_voice(
     preserve_volume: bool = Form(True),
 ):
     """
-    Intelligent Voice Conversion (Speech-to-Speech):
-    1. 'tone_color': Neural Tone Color Converter (S2S-VC). 100% preservation of
-       inflections, melody, cadence, breathing, rhythm, laughter and pauses, with ZERO text needed.
-    2. 'omnivoice': High-fidelity neural TTS re-synthesis via Whisper + OmniVoice Diffusion.
-    3. 'dsp': Classical phase-vocoder pitch and formant transfer.
+    Intelligent Voice Conversion:
+    1. 'omnivoice': Pure 100% Cloned Voice (OmniVoice Diffusion) with automated Whisper
+       transcription + Persian diacritization. Exact likeness of the target profile!
+    2. 'tone_color': Real-time Tone Color Converter with F0 pitch alignment.
     """
     global model, current_progress
     if model is None:
@@ -1116,7 +1115,7 @@ async def api_convert_voice(
         "stage": "uploading",
         "stage_text": "۱. دریافت فایل صوتی ورودی...",
         "step": 0,
-        "total_steps": 4 if convert_engine == "tone_color" else (num_steps if convert_engine == "omnivoice" else 4),
+        "total_steps": num_steps if convert_engine == "omnivoice" else 4,
         "percent": 15,
         "elapsed_seconds": 0.0,
         "eta_seconds": 0.0,
@@ -1170,7 +1169,7 @@ async def api_convert_voice(
 
         # 2. Execute selected conversion engine
         if convert_engine == "tone_color":
-            # --- NEURAL TONE COLOR CONVERTER (Real S2S-VC: 100% preservation of emotion, pitch, rhythm, laughs, breathing) ---
+            # --- NEURAL TONE COLOR CONVERTER WITH F0 ALIGNMENT ---
             current_progress.update({
                 "stage": "extracting_timbre",
                 "stage_text": f"۲. استخراج مشخصات تار صوتی و رنگ صدای «{target_name}»...",
@@ -1200,25 +1199,50 @@ async def api_convert_voice(
 
             current_progress.update({
                 "stage": "extracting_source",
-                "stage_text": "۳. تحلیل گفتار مبدا، لحن، سرعت، خنده‌ها و فراز و فرودهای صدا...",
+                "stage_text": "۳. تطبیق فرکانس پایه (F0) و تحلیل تحریرهای صدا...",
                 "percent": 60,
             })
-            src_se = tc.extract_se(str(src_audio_path))
+
+            # Intelligent F0 Pitch Alignment: align base pitch register before tone transfer
+            input_wav_for_tc = str(src_audio_path)
+            try:
+                y_s, sr_s = librosa.load(str(src_audio_path), sr=22050, duration=20)
+                y_t, sr_t = librosa.load(target_ref_path, sr=22050, duration=20)
+                f0_s, _, _ = librosa.pyin(y_s, fmin=50, fmax=400, sr=22050)
+                f0_t, _, _ = librosa.pyin(y_t, fmin=50, fmax=400, sr=22050)
+                med_s = float(np.nanmedian(f0_s))
+                med_t = float(np.nanmedian(f0_t))
+                if not np.isnan(med_s) and not np.isnan(med_t) and med_s > 40 and med_t > 40:
+                    delta_st = 12.0 * np.log2(med_t / med_s)
+                    # Clamp to natural pitch shift delta (-6 to +6 st)
+                    delta_st_clamped = float(np.clip(delta_st, -6.0, 6.0))
+                    if abs(delta_st_clamped) > 0.8:
+                        y_full, sr_full = librosa.load(str(src_audio_path), sr=22050)
+                        tens = torch.from_numpy(y_full).unsqueeze(0).float()
+                        y_aligned = torchaudio.functional.pitch_shift(tens, 22050, n_steps=delta_st_clamped).squeeze(0).numpy()
+                        aligned_path = OUTPUTS_DIR / f"aligned_{task_id}.wav"
+                        sf.write(str(aligned_path), y_aligned, 22050)
+                        input_wav_for_tc = str(aligned_path)
+                        logger.info(f"ToneColor F0 alignment applied: {delta_st_clamped:.2f} semitones")
+            except Exception as fe:
+                logger.warning(f"F0 alignment skipped: {fe}")
+
+            src_se = tc.extract_se(input_wav_for_tc)
 
             current_progress.update({
                 "stage": "converting",
-                "stage_text": f"۴. تبدیل هوشمند جنس صدا به «{target_name}» بدون دستکاری لحن و کلمات...",
+                "stage_text": f"۴. انتقال هوشمند تار صوتی به «{target_name}»...",
                 "percent": 85,
             })
 
-            tau_val = float(timbre_strength) * 0.3 if timbre_strength else 0.3
-            tau_val = float(np.clip(tau_val, 0.1, 0.7))
+            tau_val = float(timbre_strength) * 0.1 if timbre_strength else 0.1
+            tau_val = float(np.clip(tau_val, 0.0, 0.4))
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
                 lambda: tc.convert(
-                    audio_src_path=str(src_audio_path),
+                    audio_src_path=input_wav_for_tc,
                     src_se=src_se,
                     tgt_se=target_se,
                     output_path=str(out_audio_path),

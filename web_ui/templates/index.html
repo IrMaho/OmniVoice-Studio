@@ -244,28 +244,31 @@
               </div>
 
               <!-- VC Engine Selector Pills -->
-              <div class="vc-engine-selector" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.85rem;">
-                <label class="engine-radio-pill active" id="label-vc-engine-tone" style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.6rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.16); border:1.5px solid var(--color-primary); cursor:pointer; transition:all 0.2s;">
-                  <input type="radio" name="vc_engine_choice" id="engine-vc-tone" value="tone_color" checked style="accent-color:var(--color-primary); margin-top:3px;">
+              <div class="vc-engine-selector" style="display:flex; flex-direction:column; gap:0.6rem; margin-bottom:0.85rem;">
+                <!-- Engine A: Pure 100% Cloned Voice (OmniVoice Diffusion) -->
+                <label class="engine-radio-pill active" id="label-vc-engine-omnivoice" style="display:flex; align-items:flex-start; gap:0.65rem; padding:0.65rem 0.85rem; border-radius:10px; background:rgba(99,102,241,0.18); border:1.5px solid var(--color-primary); cursor:pointer; transition:all 0.2s;">
+                  <input type="radio" name="vc_engine_choice" id="engine-vc-omnivoice" value="omnivoice" checked style="accent-color:var(--color-primary); margin-top:3px;">
                   <div>
-                    <div style="font-size:0.82rem; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:0.4rem;">
-                      <span>🌟 تبدیل مستقیم جنس صدا و حنجره (Neural S2S-VC — بدون نیاز به متن)</span>
-                      <span style="font-size:0.68rem; background:rgba(16,185,129,0.2); color:#10b981; padding:1px 6px; border-radius:8px; font-weight:700;">پیشنهادی و پرسرعت</span>
+                    <div style="font-size:0.84rem; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:0.4rem;">
+                      <span>👑 صدای ۱۰۰٪ خالص کلون‌شده (OmniVoice Diffusion — حداکثر شباهت، بدون ترکیب یا هیبرید)</span>
+                      <span style="font-size:0.68rem; background:rgba(16,185,129,0.2); color:#10b981; padding:1px 6px; border-radius:8px; font-weight:700;">دقیقاً صدای شما</span>
                     </div>
-                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
-                      تغییر مستقیم تار صوتی به گوینده هدف؛ حفظ ۱۰۰٪ لحن، تحریرها، احساسات، ریتم، مکث‌ها، خنده‌ها و لهجه مبدا بدون کمترین تاخیر (تبدیل ۳ دقیقه‌ای در ۴ ثانیه!)
+                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:3px; line-height:1.5;">
+                      دقیقاً همان صدای باکیفیت و خالصی که در حالت «متن به صوت» می‌شنوید! هوش مصنوعی گفتار ویس را استخراج و اعراب‌گذاری کرده و با <strong>تار صوتی ۱۰۰٪ خالص شما</strong> و منطبق بر زمان‌بندی ویس مبدا بازخوانی می‌کند (بدون نیاز به تایپ متن).
                     </div>
                   </div>
                 </label>
 
-                <label class="engine-radio-pill" id="label-vc-engine-omnivoice" style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.55rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; transition:all 0.2s;">
-                  <input type="radio" name="vc_engine_choice" id="engine-vc-omnivoice" value="omnivoice" style="accent-color:var(--color-primary); margin-top:3px;">
+                <!-- Engine B: Direct Tone Color Converter -->
+                <label class="engine-radio-pill" id="label-vc-engine-tone" style="display:flex; align-items:flex-start; gap:0.65rem; padding:0.65rem 0.85rem; border-radius:10px; background:var(--bg-input); border:1.5px solid var(--border-color); cursor:pointer; transition:all 0.2s;">
+                  <input type="radio" name="vc_engine_choice" id="engine-vc-tone" value="tone_color" style="accent-color:var(--color-primary); margin-top:3px;">
                   <div>
-                    <div style="font-size:0.8rem; font-weight:700; color:var(--text-main);">
-                      <span>🔄 سنتز متنی با فلو مچینگ (OmniVoice Re-Synthesis)</span>
+                    <div style="font-size:0.82rem; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:0.4rem;">
+                      <span>🎭 انتقال مستقیم لحن و تحریرها (Neural Tone Color — رعدآسا در کمتر از ۲ ثانیه)</span>
+                      <span style="font-size:0.68rem; background:rgba(99,102,241,0.2); color:var(--color-primary-light); padding:1px 6px; border-radius:8px; font-weight:700;">فوق‌سریع</span>
                     </div>
-                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
-                      استخراج متن صدا با هوش مصنوعی Whisper و بازخوانی مجدد کلمات توسط مدل OmniVoice با گوینده هدف.
+                    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:3px; line-height:1.5;">
+                      تبدیل مستقیم روی موج صوتی؛ حفظ ۱۰۰٪ خنده‌ها، زمزمه‌ها، نفس‌ها و تحریرها با تطبیق فرکانسی گام پایه (F0 Alignment).
                     </div>
                   </div>
                 </label>
