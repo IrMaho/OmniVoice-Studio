@@ -270,19 +270,11 @@
                 <div class="vc-file-info-row">
                   <span id="vc-file-name" class="file-name-chip">audio.ogg</span>
                   <span id="vc-file-dur" class="file-dur-chip">0.0s</span>
-                  <button type="button" id="btn-vc-change-file" class="btn-micro secondary">تعویض فایل</button>
-                  <button type="button" id="btn-vc-quick-transcribe" class="btn-micro accent" title="پیش‌نمایش متن با Whisper">🎙️ استخراج متن با Whisper</button>
+                  <button type="button" id="btn-vc-change-file" class="btn-micro secondary">تعویض فایل صوتی</button>
+                  <span style="font-size:0.72rem; color:var(--color-primary-light); font-weight:700; margin-right:auto;">⚡ تبدیل مستقیم صوت به صوت (بدون نیاز به متن)</span>
                 </div>
                 <audio id="vc-audio-player" class="compact-audio-player" controls style="width:100%; height:32px; margin-top:0.35rem;"></audio>
-
-                <!-- Editable Transcribed Text Box for OmniVoice mode -->
-                <div id="vc-transcript-box" style="margin-top:0.5rem;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
-                    <label for="vc-override-text" style="font-size:0.75rem; font-weight:700; color:var(--text-muted);">متن شناسایی‌شده (در صورت خالی بودن، Whisper حین تولید خودکار استخراج می‌کند):</label>
-                    <span id="vc-transcribe-status" style="font-size:0.7rem; color:var(--color-primary-light);"></span>
-                  </div>
-                  <textarea id="vc-override-text" class="form-input-sm" rows="2" style="width:100%; resize:vertical; font-size:0.8rem; line-height:1.4;" placeholder="متن استخراج‌شده از صوت اینجا نمایش می‌یابد یا می‌توانید خودتان بنویسید..."></textarea>
-                </div>
+                <input type="hidden" id="vc-override-text" value="">
               </div>
 
               <!-- VC DSP Specific Tuning Controls (hidden when OmniVoice is active) -->
