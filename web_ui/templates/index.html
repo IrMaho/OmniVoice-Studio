@@ -548,27 +548,55 @@
               <input type="text" id="story-title-input" class="form-input-sm" value="داستان گفتگوی دونفره" placeholder="مثلاً: گفتگوی عاشقانه مریم و محمد">
             </div>
             <div class="story-meta-field">
-              <label for="story-global-pause-select">مکث پیش‌فرض بین دیالوگ‌ها:</label>
+              <label for="story-output-format">فرمت خروجی صوت:</label>
+              <select id="story-output-format" class="form-select-sm" title="فرمت فایل صوتی نهایی">
+                <option value="mp3" selected>🎵 MP3 (پیش‌فرض سبک و استودیویی)</option>
+                <option value="wav">🎙️ WAV (کیفیت خام استودیویی ۲۴kHz)</option>
+                <option value="flac">💎 FLAC (بدون افت کیفیت)</option>
+              </select>
+            </div>
+            <div class="story-meta-field">
+              <label for="story-crossfade-select">فید و انتقال (Crossfade):</label>
+              <select id="story-crossfade-select" class="form-select-sm" title="هم‌پوشانی و فید نرم بین صداها برای جلوگیری از افتادن سکوت">
+                <option value="120" selected>🌊 فید متقاطع نرم (120ms - پیوسته)</option>
+                <option value="60">🌊 فید متقاطع سریع (60ms)</option>
+                <option value="200">🌊 فید متقاطع عمیق (200ms)</option>
+                <option value="0">⚡ برش مستقیم لبه به لبه (0ms)</option>
+              </select>
+            </div>
+            <div class="story-meta-field">
+              <label for="story-global-pause-select">مکث پیش‌فرض بین خطوط:</label>
               <select id="story-global-pause-select" class="form-select-sm">
-                <option value="0.0">⚡ بدون مکث (0.0s - کاملاً پیوسته)</option>
+                <option value="0.0" selected>⚡ بدون مکث (0.0s - کاملاً پیوسته)</option>
                 <option value="0.3">⏱️ مکث کوتاه (0.3s)</option>
-                <option value="0.5" selected>⏱️ مکث طبیعی (0.5s)</option>
+                <option value="0.5">⏱️ مکث طبیعی (0.5s)</option>
                 <option value="0.8">⏱️ مکث شمرده (0.8s)</option>
                 <option value="1.2">⏱️ مکث داستانی (1.2s)</option>
               </select>
             </div>
             <div class="story-meta-field">
-              <label for="story-global-steps-select">کیفیت و وضوح پردازش:</label>
+              <label for="story-global-steps-select">کیفیت پردازش:</label>
               <select id="story-global-steps-select" class="form-select-sm">
                 <option value="16">⚡ رعدآسا (۱۶ گام)</option>
-                <option value="24" selected>🎯 استاندارد و طبیعی (۲۴ گام)</option>
-                <option value="36">💎 فوق دقیق استودیویی (۳۶ گام)</option>
+                <option value="24" selected>🎯 استاندارد (۲۴ گام)</option>
+                <option value="36">💎 دقیق استودیویی (۳۶ گام)</option>
               </select>
             </div>
             <div class="story-meta-action">
               <button type="button" id="btn-add-dialogue" class="btn-compact-primary">
-                <span>➕</span><span>افزودن دیالوگ جدید</span>
+                <span>➕</span><span>دیالوگ جدید</span>
               </button>
+            </div>
+          </div>
+
+          <!-- Secondary Story Sub-Options Bar (Trimming & Info) -->
+          <div class="story-sub-options-row">
+            <label class="story-toggle-label" title="حذف خودکار سکوت‌های زائد سر و ته جملات تولید شده توسط مدل هوش مصنوعی برای حذف کامل وقفه ۱ ثانیه‌ای ناخواسته">
+              <input type="checkbox" id="story-chk-trim-silence" checked>
+              <span>✂️ حذف خودکار سکوت‌های اضافه مدل (Smart Silence Trimming)</span>
+            </label>
+            <div class="story-format-badge-pill" id="story-active-format-pill">
+              <span>خروجی نهایی: <strong id="story-active-format-badge">MP3</strong></span>
             </div>
           </div>
 

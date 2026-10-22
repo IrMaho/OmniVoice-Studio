@@ -1698,45 +1698,164 @@ def synthesize_dialogue_line(
     return apply_post_mastering(raw_wav, sample_rate=24000, pitch_shift_steps=pitch_shift, normalize_volume=True)
 
 
+def save_output_audio(
+    wav_data: np.ndarray,
+    task_id: str,
+    prefix: str = "output",
+    format_choice: str = "mp3",
+    sample_rate: int = 24000,
+) -> Tuple[Path, str]:
+    """
+    Saves audio to disk in requested format (mp3, wav, flac, ogg) and returns (path, url).
+    Defaults to mp3 for lightweight web streaming and universal playback.
+    """
+    fmt = (format_choice or "mp3").lower().strip()
+    if fmt not in ["mp3", "wav", "flac", "ogg"]:
+        fmt = "mp3"
+
+    ext = fmt
+    out_filename = f"{prefix}_{task_id}.{ext}"
+    out_path = OUTPUTS_DIR / out_filename
+    out_url = f"/outputs/{out_filename}"
+
+    if fmt == "mp3":
+        sf.write(str(out_path), wav_data, sample_rate, format="MP3")
+    elif fmt == "flac":
+        sf.write(str(out_path), wav_data, sample_rate, format="FLAC")
+    elif fmt == "ogg":
+        sf.write(str(out_path), wav_data, sample_rate, format="OGG")
+    else:
+        sf.write(str(out_path), wav_data, sample_rate, format="WAV")
+
+    return out_path, out_url
+
+
+def trim_head_tail_silence(
+    wav: np.ndarray,
+    sample_rate: int = 24000,
+    thresh_ratio: float = 0.015,
+    pad_ms: int = 30,
+) -> np.ndarray:
+    """
+    Trims model-generated dead silence from the beginning and end of a dialogue line.
+    Preserves pad_ms (default 30ms) to ensure natural onset and release without clipping plosives.
+    """
+    if len(wav) == 0:
+        return wav
+    peak = np.max(np.abs(wav))
+    if peak < 1e-4:
+        return wav
+
+    thresh = peak * thresh_ratio
+    non_silent = np.where(np.abs(wav) > thresh)[0]
+    if len(non_silent) == 0:
+        return wav
+
+    pad_samples = int(sample_rate * (pad_ms / 1000.0))
+    start_idx = max(0, non_silent[0] - pad_samples)
+    end_idx = min(len(wav), non_silent[-1] + pad_samples)
+    return wav[start_idx:end_idx]
+
+
 def assemble_story_audio(
     dialogue_wavs: List[np.ndarray],
     pause_after_list: List[float],
     repeat_list: List[int],
+    crossfade_ms: int = 120,
+    trim_silence: bool = True,
     sample_rate: int = 24000,
-) -> Tuple[np.ndarray, List[Dict[str, float]]]:
+) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
     """
-    Seamless crossfade stitching of dialogues with repetitions and custom pauses.
-    Returns: (master_wav, timeline_timestamps)
+    Seamless multi-speaker audio assembly with:
+    1. Smart silence stripping of head/tail dead zones (eliminates the awkward 1-second pause).
+    2. Equal-power crossfading for seamless transitions (pause_after <= 0.01s).
+    3. Smooth envelope fade-in/fade-out for paused transitions.
+    4. Exact timeline timestamps for each dialogue chapter.
     """
-    fade_len = int(sample_rate * 0.015)  # 15ms anti-click crossfade
-    fade_in = np.linspace(0, 1, fade_len, dtype=np.float32)
-    fade_out = np.linspace(1, 0, fade_len, dtype=np.float32)
+    processed_dialogues = []
 
-    master_chunks = []
+    # Pre-process lines: trim dead silence if enabled
+    for wav, repeats in zip(dialogue_wavs, repeat_list):
+        r_count = max(1, int(repeats))
+        if trim_silence:
+            trimmed = trim_head_tail_silence(wav, sample_rate=sample_rate, pad_ms=30)
+        else:
+            trimmed = wav.copy()
+
+        # If repetitions > 1, repeat with small natural 120ms pause between repetitions
+        if r_count > 1:
+            line_chunks = []
+            rep_pause = np.zeros(int(sample_rate * 0.12), dtype=np.float32)
+            for r in range(r_count):
+                line_chunks.append(trimmed)
+                if r < r_count - 1:
+                    line_chunks.append(rep_pause)
+            processed_wav = np.concatenate(line_chunks)
+        else:
+            processed_wav = trimmed
+
+        processed_dialogues.append(processed_wav)
+
+    if not processed_dialogues:
+        return np.zeros(sample_rate, dtype=np.float32), []
+
+    master_audio = np.zeros(0, dtype=np.float32)
     timeline = []
-    current_time_sec = 0.0
 
-    for idx, (wav, pause_after, repeat_count) in enumerate(zip(dialogue_wavs, pause_after_list, repeat_list)):
-        repeats = max(1, int(repeat_count))
-        p_sec = max(0.0, float(pause_after))
+    cf_samples = int(sample_rate * (max(0, crossfade_ms) / 1000.0))
+    # Precompute equal-power curves
+    if cf_samples > 0:
+        t_curve = np.linspace(0, np.pi / 2, cf_samples, dtype=np.float32)
+        eq_fade_out = np.cos(t_curve)
+        eq_fade_in = np.sin(t_curve)
+    else:
+        eq_fade_out = np.zeros(0, dtype=np.float32)
+        eq_fade_in = np.zeros(0, dtype=np.float32)
 
-        line_start = current_time_sec
+    edge_fade_samples = int(sample_rate * 0.015)  # 15ms anti-click
+    edge_fade_in = np.linspace(0, 1, edge_fade_samples, dtype=np.float32)
+    edge_fade_out = np.linspace(1, 0, edge_fade_samples, dtype=np.float32)
 
-        for r in range(repeats):
-            w = wav.copy()
-            if len(w) > fade_len * 2:
-                w[:fade_len] *= fade_in
-                w[-fade_len:] *= fade_out
+    for idx, (wav, pause_after) in enumerate(zip(processed_dialogues, pause_after_list)):
+        # Apply anti-click to start and end of this line
+        cur_wav = wav.copy()
+        if len(cur_wav) > edge_fade_samples * 2:
+            cur_wav[:edge_fade_samples] *= edge_fade_in
+            cur_wav[-edge_fade_samples:] *= edge_fade_out
 
-            master_chunks.append(w)
-            current_time_sec += len(w) / sample_rate
+        line_dur = len(cur_wav) / sample_rate
 
-            if r < repeats - 1:
-                repeat_pause = int(sample_rate * 0.25)
-                master_chunks.append(np.zeros(repeat_pause, dtype=np.float32))
-                current_time_sec += 0.25
+        if len(master_audio) == 0:
+            # First dialogue
+            master_audio = cur_wav
+            line_start = 0.0
+            line_end = line_dur
+        else:
+            # Transition from previous dialogue
+            prev_pause = pause_after_list[idx - 1] if idx > 0 else 0.0
 
-        line_end = current_time_sec
+            if prev_pause <= 0.01 and cf_samples > 0 and len(master_audio) >= cf_samples and len(cur_wav) >= cf_samples:
+                # SEAMLESS EQUAL-POWER CROSSFADE!
+                line_start = (len(master_audio) - cf_samples) / sample_rate
+
+                # Overlap end of master_audio with start of cur_wav
+                overlap_region = (master_audio[-cf_samples:] * eq_fade_out) + (cur_wav[:cf_samples] * eq_fade_in)
+                master_audio = np.concatenate([
+                    master_audio[:-cf_samples],
+                    overlap_region,
+                    cur_wav[cf_samples:]
+                ])
+                line_end = len(master_audio) / sample_rate
+            else:
+                # With specified pause gap
+                pause_samples = int(sample_rate * prev_pause)
+                if pause_samples > 0:
+                    master_audio = np.concatenate([master_audio, np.zeros(pause_samples, dtype=np.float32)])
+
+                line_start = len(master_audio) / sample_rate
+                master_audio = np.concatenate([master_audio, cur_wav])
+                line_end = len(master_audio) / sample_rate
+
         timeline.append({
             "index": idx,
             "start_sec": round(line_start, 2),
@@ -1744,17 +1863,12 @@ def assemble_story_audio(
             "duration_sec": round(line_end - line_start, 2)
         })
 
-        if p_sec > 0.005:
-            pause_samples = int(sample_rate * p_sec)
-            master_chunks.append(np.zeros(pause_samples, dtype=np.float32))
-            current_time_sec += p_sec
-
-    master_wav = np.concatenate(master_chunks) if master_chunks else np.zeros(sample_rate, dtype=np.float32)
-    peak = np.max(np.abs(master_wav))
+    # Final post-mastering peak normalization
+    peak = np.max(np.abs(master_audio)) if len(master_audio) > 0 else 0.0
     if peak > 1e-4:
-        master_wav = (master_wav / peak) * 0.94
+        master_audio = (master_audio / peak) * 0.94
 
-    return master_wav, timeline
+    return master_audio, timeline
 
 
 @app.post("/api/story/preview-line")
@@ -1768,13 +1882,12 @@ async def api_story_preview_line(request: Request):
         pitch_shift = float(data.get("pitch_shift", 0.0))
         num_steps = int(data.get("num_steps", 24))
         guidance_scale = float(data.get("guidance_scale", 2.0))
+        output_format = data.get("output_format", "mp3")
 
         if not text:
             raise HTTPException(status_code=400, detail="متن دیالوگ خالی است.")
 
         task_id = uuid.uuid4().hex[:8]
-        out_path = OUTPUTS_DIR / f"line_{task_id}.wav"
-        out_url = f"/outputs/line_{task_id}.wav"
 
         loop = asyncio.get_event_loop()
         wav = await loop.run_in_executor(
@@ -1789,9 +1902,12 @@ async def api_story_preview_line(request: Request):
             )
         )
 
-        sf.write(str(out_path), wav, 24000)
-        dur = round(len(wav) / 24000.0, 2)
-        return {"success": True, "audio_url": out_url, "duration_sec": dur}
+        trimmed_wav = trim_head_tail_silence(wav, sample_rate=24000, pad_ms=30)
+        out_path, out_url = save_output_audio(
+            trimmed_wav, task_id, prefix="line", format_choice=output_format, sample_rate=24000
+        )
+        dur = round(len(trimmed_wav) / 24000.0, 2)
+        return {"success": True, "audio_url": out_url, "duration_sec": dur, "format": output_format}
     except Exception as e:
         logger.error(f"Story preview line error: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
@@ -1800,7 +1916,10 @@ async def api_story_preview_line(request: Request):
 @app.post("/api/story/generate")
 async def api_story_generate(request: Request):
     """
-    Generate and stitch a full multi-speaker audio story/dialogue.
+    Generate and stitch a full multi-speaker audio story/dialogue with:
+    - Smart silence trimming of neural gaps
+    - Equal-power crossfade transition
+    - Configurable output format (mp3 / wav / flac)
     """
     global current_progress
     if current_progress["is_busy"]:
@@ -1810,6 +1929,9 @@ async def api_story_generate(request: Request):
         data = await request.json()
         title = data.get("title", "داستان صوتی").strip() or "داستان صوتی"
         dialogues = data.get("dialogues", [])
+        output_format = data.get("output_format", "mp3").lower()
+        crossfade_ms = int(data.get("crossfade_ms", 120))
+        trim_silence = bool(data.get("trim_silence", True))
 
         if not dialogues:
             raise HTTPException(status_code=400, detail="حداقل یک دیالوگ برای تولید داستان صوتی لازم است.")
@@ -1822,7 +1944,7 @@ async def api_story_generate(request: Request):
             "is_busy": True,
             "task_id": task_id,
             "stage": "diffusion",
-            "stage_text": f"آغاز ساخت سناریو صوتی «{title}» ({total_lines} دیالوگ)...",
+            "stage_text": f"آغاز ساخت سناریو صوتی «{title}» ({total_lines} دیالوگ با فرمت {output_format.upper()})...",
             "step": 0,
             "total_steps": total_lines,
             "percent": 5,
@@ -1843,7 +1965,7 @@ async def api_story_generate(request: Request):
             speaker_name = item.get("speaker_name", "گوینده")
             speed = float(item.get("speed", 1.0))
             pitch = float(item.get("pitch_shift", 0.0))
-            pause_after = float(item.get("pause_after", 0.5))
+            pause_after = float(item.get("pause_after", 0.0))
             repeats = int(item.get("repeat_count", 1))
             steps = int(item.get("num_steps", 24))
             cfg = float(item.get("guidance_scale", 2.0))
@@ -1877,7 +1999,7 @@ async def api_story_generate(request: Request):
 
         current_progress.update({
             "stage": "decoding",
-            "stage_text": f"میکس و مونتاژ پیوسته تمام دیالوگ‌ها و فیدهای صوتی...",
+            "stage_text": f"میکس و مونتاژ پیوسته با فید متقاطع ({crossfade_ms}ms) و خروجی {output_format.upper()}...",
             "percent": 95,
         })
 
@@ -1885,12 +2007,18 @@ async def api_story_generate(request: Request):
             generated_wavs,
             pause_list,
             repeat_list,
+            crossfade_ms=crossfade_ms,
+            trim_silence=trim_silence,
             sample_rate=24000,
         )
 
-        out_audio_path = OUTPUTS_DIR / f"story_{task_id}.wav"
-        out_audio_url = f"/outputs/story_{task_id}.wav"
-        sf.write(str(out_audio_path), master_wav, 24000)
+        out_audio_path, out_audio_url = save_output_audio(
+            master_wav,
+            task_id,
+            prefix="story",
+            format_choice=output_format,
+            sample_rate=24000,
+        )
 
         dt = round(time.time() - t_start, 2)
         total_dur = round(len(master_wav) / 24000.0, 2)
@@ -1898,9 +2026,10 @@ async def api_story_generate(request: Request):
 
         result_item = {
             "id": task_id,
-            "mode": f"داستان صوتی و دیالوگ چندنفره: «{title}»",
-            "text": f"سناریوی چندنفره شامل {len(generated_wavs)} دیالوگ با ترکیب صداها",
+            "mode": f"داستان صوتی و دیالوگ چندنفره: «{title}» ({output_format.upper()})",
+            "text": f"سناریوی چندنفره شامل {len(generated_wavs)} دیالوگ با فید متقاطع و میکس نهایی",
             "audio_url": out_audio_url,
+            "format": output_format,
             "duration_sec": total_dur,
             "elapsed_sec": dt,
             "rtf": rtf,
@@ -1911,7 +2040,7 @@ async def api_story_generate(request: Request):
         current_progress.update({
             "is_busy": False,
             "stage": "completed",
-            "stage_text": f"داستان صوتی در {dt} ثانیه ساخته شد! (طول کل: {total_dur}s)",
+            "stage_text": f"داستان صوتی در {dt} ثانیه ساخته شد! (طول کل: {total_dur}s با فرمت {output_format.upper()})",
             "percent": 100,
             "elapsed_seconds": dt,
         })
@@ -1921,6 +2050,7 @@ async def api_story_generate(request: Request):
             "story_id": task_id,
             "title": title,
             "audio_url": out_audio_url,
+            "format": output_format,
             "duration_sec": total_dur,
             "timeline": timeline,
             "elapsed_sec": dt,

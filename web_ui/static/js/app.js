@@ -1380,8 +1380,13 @@ function showResult(item) {
   if (timeBadge) timeBadge.textContent = `پردازش: ${item.elapsed_sec}s`;
   if (rtfBadge) rtfBadge.textContent = `RTF: ${item.rtf}x`;
   if (downloadLink) {
+    const ext = item.format || (item.audio_url && item.audio_url.split('.').pop()) || 'mp3';
     downloadLink.href = item.audio_url;
-    downloadLink.download = `omnivoice_${item.id}.wav`;
+    downloadLink.download = `omnivoice_${item.id}.${ext}`;
+    const dlLabel = document.getElementById('btn-download-label');
+    if (dlLabel) {
+      dlLabel.textContent = `دانلود صوت با کیفیت استودیویی (${ext.toUpperCase()})`;
+    }
   }
 
   if (resultCard) resultCard.style.display = 'flex';
@@ -1582,6 +1587,15 @@ function initStoryStudio() {
   if (btnGenerateStory) {
     btnGenerateStory.addEventListener('click', () => {
       generateFullStory();
+    });
+  }
+
+  // Format selector change listener
+  const formatSelect = document.getElementById('story-output-format');
+  const formatBadge = document.getElementById('story-active-format-badge');
+  if (formatSelect && formatBadge) {
+    formatSelect.addEventListener('change', () => {
+      formatBadge.textContent = formatSelect.value.toUpperCase();
     });
   }
 
@@ -2097,6 +2111,8 @@ window.previewDialogueLine = async function(idx) {
   }
 
   try {
+    const outputFormat = document.getElementById('story-output-format')?.value || 'mp3';
+
     const res = await fetch('/api/story/preview-line', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2107,6 +2123,7 @@ window.previewDialogueLine = async function(idx) {
         pitch_shift: dlg.pitch_shift || 0.0,
         num_steps: dlg.num_steps || 24,
         guidance_scale: dlg.guidance_scale || 2.0,
+        output_format: outputFormat,
       }),
     });
     const data = await res.json();
@@ -2147,6 +2164,10 @@ async function generateFullStory() {
   }
 
   const title = document.getElementById('story-title-input')?.value?.trim() || 'داستان صوتی و دیالوگ';
+  const outputFormat = document.getElementById('story-output-format')?.value || 'mp3';
+  const crossfadeMs = parseInt(document.getElementById('story-crossfade-select')?.value ?? 120);
+  const trimSilence = document.getElementById('story-chk-trim-silence')?.checked ?? true;
+
   const btnGenerateStory = document.getElementById('btn-generate-full-story');
   const progressBox = document.getElementById('progress-container');
   const resultCard = document.getElementById('result-card');
@@ -2188,6 +2209,9 @@ async function generateFullStory() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: title,
+        output_format: outputFormat,
+        crossfade_ms: crossfadeMs,
+        trim_silence: trimSilence,
         dialogues: dialoguesPayload,
       }),
     });
@@ -2198,7 +2222,8 @@ async function generateFullStory() {
       const resultItem = {
         id: data.story_id,
         audio_url: data.audio_url,
-        text: `داستان صوتی «${data.title}» - شامل ${storyDialogues.length} دیالوگ با ترکیب و پیوستگی کامل گویندگان`,
+        format: data.format || outputFormat,
+        text: `داستان صوتی «${data.title}» (${(data.format || outputFormat).toUpperCase()}) - شامل ${storyDialogues.length} دیالوگ با فید متقاطع و پیوستگی کامل`,
         duration_sec: data.duration_sec,
         elapsed_sec: data.elapsed_sec,
         rtf: rtf,

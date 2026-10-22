@@ -1848,19 +1848,62 @@ html, body {
 
 .story-global-strip {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1.2fr auto;
-  gap: 0.65rem;
+  grid-template-columns: 1.8fr 1.2fr 1.3fr 1.1fr 1.1fr auto;
+  gap: 0.55rem;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 0.75rem 0.9rem;
+  padding: 0.65rem 0.85rem;
   align-items: flex-end;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .story-global-strip {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) auto;
   }
+}
+
+.story-sub-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.story-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-weight: 700;
+  user-select: none;
+}
+
+.story-toggle-label input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.story-format-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .story-meta-field {
