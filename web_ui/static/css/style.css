@@ -526,10 +526,49 @@ html, body {
   color: var(--text-muted);
 }
 
+.file-playback-chip {
+  font-size: 0.74rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
 .trimmer-actions {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.btn-micro.primary-glow {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-micro.primary-glow:hover {
+  background: linear-gradient(135deg, #0369a1, #1d4ed8);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-micro.primary-glow.playing {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  animation: pulse-playback 1.5s infinite alternate;
+}
+
+@keyframes pulse-playback {
+  0% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); }
+  100% { box-shadow: 0 0 14px rgba(245, 158, 11, 0.6); }
 }
 
 .waveform-compact-canvas {
@@ -546,6 +585,7 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
+  cursor: ew-resize;
 }
 
 .trimmer-bottom-bar {

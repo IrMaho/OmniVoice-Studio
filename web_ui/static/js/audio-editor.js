@@ -16,19 +16,23 @@ class AudioTrimmer {
     this.endTime = 5.0; // Default 5 seconds
     
     this.isPlaying = false;
+    this.isPaused = false;
+    this._isSeeking = false;
     this.activeSource = null;
-    this.playbackStartTime = 0;
+    this.playbackStartAudioTime = 0;
+    this.playbackStartOffset = 0;
     this.playheadPosition = 0;
     this.animFrameId = null;
 
     // Interaction state
-    this.dragTarget = null; // 'start', 'end', or 'range'
+    this.dragTarget = null; // 'start', 'end', 'range', 'playhead'
     this.dragStartX = 0;
     this.initialStartTime = 0;
     this.initialEndTime = 0;
 
     this.onSelectionChange = options.onSelectionChange || null;
     this.onLoaded = options.onLoaded || null;
+    this.onPlaybackChange = options.onPlaybackChange || null;
 
     this.initCanvas();
     this.attachEvents();
@@ -180,18 +184,39 @@ class AudioTrimmer {
       ctx.fillText(`${sec}s`, x + 2, h - 10);
     }
 
-    // Playhead if playing
-    if (this.isPlaying) {
+    // Playhead if playing, paused, or scrubbed
+    if (this.isPlaying || this.isPaused || this.playheadPosition > this.startTime) {
       const playX = (this.playheadPosition / this.duration) * w;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 8;
+      const playColor = this.isPlaying ? '#38bdf8' : '#f59e0b';
+
+      ctx.save();
+      ctx.strokeStyle = playColor;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = playColor;
+      ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.moveTo(playX, 0);
       ctx.lineTo(playX, h);
       ctx.stroke();
       ctx.shadowBlur = 0;
+
+      // Playhead top handle pin
+      ctx.fillStyle = playColor;
+      ctx.beginPath();
+      ctx.arc(playX, 7, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(playX, 7, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Current playhead time tag
+      const relTime = Math.max(0, this.playheadPosition - this.startTime).toFixed(1);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${relTime}s`, playX, 22);
+      ctx.restore();
     }
   }
 
@@ -206,18 +231,27 @@ class AudioTrimmer {
       return Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     };
 
+    let mouseDownX = 0;
+    let hasMoved = false;
+
     this.canvas.addEventListener('mousedown', (e) => {
       if (!this.audioBuffer) return;
       const x = getX(e);
+      mouseDownX = x;
+      hasMoved = false;
+
       const startX = (this.startTime / this.duration) * this.width;
       const endX = (this.endTime / this.duration) * this.width;
+      const playX = (this.playheadPosition / this.duration) * this.width;
 
       if (Math.abs(x - startX) <= 12) {
         this.dragTarget = 'start';
       } else if (Math.abs(x - endX) <= 12) {
         this.dragTarget = 'end';
-      } else if (x > startX && x < endX) {
-        this.dragTarget = 'range';
+      } else if (Math.abs(x - playX) <= 12) {
+        this.dragTarget = 'playhead';
+      } else if (x >= startX && x <= endX) {
+        this.dragTarget = 'range_or_seek';
         this.dragStartX = x;
         this.initialStartTime = this.startTime;
         this.initialEndTime = this.endTime;
@@ -228,24 +262,43 @@ class AudioTrimmer {
         } else {
           this.endTime = Math.min(this.duration, (x / this.width) * this.duration);
         }
+        if (this.playheadPosition < this.startTime || this.playheadPosition > this.endTime) {
+          this.playheadPosition = this.startTime;
+        }
         this.triggerChange();
         this.draw();
+        this.triggerPlaybackChange();
       }
     });
 
     window.addEventListener('mousemove', (e) => {
       if (!this.dragTarget || !this.audioBuffer) return;
       const x = getX(e);
-      const time = (x / this.width) * this.duration;
+      if (Math.abs(x - mouseDownX) > 4) {
+        hasMoved = true;
+      }
 
       const maxDur = this.maxAllowedDuration || 15.0;
+      const time = (x / this.width) * this.duration;
+
       if (this.dragTarget === 'start') {
         const candidateStart = Math.max(0, Math.min(time, this.endTime - 0.5));
         this.startTime = Math.max(candidateStart, this.endTime - maxDur);
+        if (this.playheadPosition < this.startTime) this.playheadPosition = this.startTime;
+        this.triggerChange();
+        this.draw();
+        this.triggerPlaybackChange();
       } else if (this.dragTarget === 'end') {
         const candidateEnd = Math.min(this.duration, Math.max(time, this.startTime + 0.5));
         this.endTime = Math.min(candidateEnd, this.startTime + maxDur);
-      } else if (this.dragTarget === 'range') {
+        if (this.playheadPosition > this.endTime) this.playheadPosition = this.endTime;
+        this.triggerChange();
+        this.draw();
+        this.triggerPlaybackChange();
+      } else if (this.dragTarget === 'playhead') {
+        const scrubTime = Math.max(this.startTime, Math.min(this.endTime, time));
+        this.seek(scrubTime);
+      } else if (this.dragTarget === 'range_or_seek' && hasMoved) {
         const deltaSec = ((x - this.dragStartX) / this.width) * this.duration;
         const dur = this.initialEndTime - this.initialStartTime;
         let newStart = this.initialStartTime + deltaSec;
@@ -260,61 +313,193 @@ class AudioTrimmer {
         }
         this.startTime = newStart;
         this.endTime = newEnd;
+        if (this.playheadPosition < this.startTime || this.playheadPosition > this.endTime) {
+          this.playheadPosition = this.startTime;
+        }
+        this.triggerChange();
+        this.draw();
+        this.triggerPlaybackChange();
       }
-      this.triggerChange();
-      this.draw();
     });
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (e) => {
+      if (!this.dragTarget || !this.audioBuffer) return;
+      if (this.dragTarget === 'range_or_seek' && !hasMoved) {
+        // User clicked inside selection range without dragging -> Seek to clicked time!
+        const x = getX(e);
+        const clickTime = (x / this.width) * this.duration;
+        this.seek(clickTime);
+      }
       this.dragTarget = null;
+      hasMoved = false;
+    });
+
+    // Spacebar and Arrow Keys for instant Seek / Play / Pause
+    window.addEventListener('keydown', (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      const customWrapper = document.getElementById('container-mode-custom');
+      if (!customWrapper || customWrapper.style.display === 'none') return;
+      if (!this.audioBuffer) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        this.togglePlayPause();
+      } else if (e.code === 'ArrowLeft') {
+        // Rewind 1 second
+        e.preventDefault();
+        this.seekRelative(-1.0);
+      } else if (e.code === 'ArrowRight') {
+        // Forward 1 second
+        e.preventDefault();
+        this.seekRelative(1.0);
+      }
     });
   }
 
-  playSelection() {
+  togglePlayPause() {
+    if (this.isPlaying) {
+      this.pause();
+    } else {
+      this.play();
+    }
+  }
+
+  play() {
     if (!this.audioBuffer) return;
-    this.stopPlayback();
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+
+    if (this.activeSource) {
+      this._isSeeking = true;
+      try { this.activeSource.stop(); } catch (e) {}
+      this.activeSource = null;
+      this._isSeeking = false;
+    }
+
+    // Clamp playhead between startTime and endTime
+    if (this.playheadPosition < this.startTime || this.playheadPosition >= this.endTime - 0.05) {
+      this.playheadPosition = this.startTime;
+    }
+
+    const offset = this.playheadPosition;
+    const remainingDuration = Math.max(0.05, this.endTime - offset);
 
     const source = this.audioContext.createBufferSource();
     source.buffer = this.audioBuffer;
     source.connect(this.audioContext.destination);
 
-    const offset = this.startTime;
-    const playDuration = Math.max(0.1, this.endTime - this.startTime);
-
-    source.start(0, offset, playDuration);
+    source.start(0, offset, remainingDuration);
     this.activeSource = source;
     this.isPlaying = true;
-    this.playbackStartTime = this.audioContext.currentTime;
+    this.isPaused = false;
+    this.playbackStartAudioTime = this.audioContext.currentTime;
+    this.playbackStartOffset = offset;
 
     source.onended = () => {
-      this.isPlaying = false;
-      this.activeSource = null;
-      cancelAnimationFrame(this.animFrameId);
-      this.draw();
+      if (this._isSeeking) return;
+      if (this.activeSource === source) {
+        this.isPlaying = false;
+        this.isPaused = false;
+        this.activeSource = null;
+        this.playheadPosition = this.startTime;
+        cancelAnimationFrame(this.animFrameId);
+        this.draw();
+        this.triggerPlaybackChange();
+      }
     };
 
     const animatePlayhead = () => {
       if (!this.isPlaying) return;
-      const elapsed = this.audioContext.currentTime - this.playbackStartTime;
-      this.playheadPosition = this.startTime + elapsed;
-      if (this.playheadPosition > this.endTime) {
-        this.stopPlayback();
+      const elapsed = this.audioContext.currentTime - this.playbackStartAudioTime;
+      this.playheadPosition = this.playbackStartOffset + elapsed;
+
+      if (this.playheadPosition >= this.endTime) {
+        this.stop();
         return;
       }
+
       this.draw();
+      this.triggerPlaybackChange();
       this.animFrameId = requestAnimationFrame(animatePlayhead);
     };
-    animatePlayhead();
+
+    cancelAnimationFrame(this.animFrameId);
+    this.animFrameId = requestAnimationFrame(animatePlayhead);
+    this.draw();
+    this.triggerPlaybackChange();
   }
 
-  stopPlayback() {
+  pause() {
+    if (!this.isPlaying) return;
+    this._isSeeking = true;
     if (this.activeSource) {
       try { this.activeSource.stop(); } catch (e) {}
       this.activeSource = null;
     }
+    this._isSeeking = false;
+
     this.isPlaying = false;
+    this.isPaused = true;
     cancelAnimationFrame(this.animFrameId);
     this.draw();
+    this.triggerPlaybackChange();
+  }
+
+  stop() {
+    this._isSeeking = true;
+    if (this.activeSource) {
+      try { this.activeSource.stop(); } catch (e) {}
+      this.activeSource = null;
+    }
+    this._isSeeking = false;
+
+    this.isPlaying = false;
+    this.isPaused = false;
+    this.playheadPosition = this.startTime;
+    cancelAnimationFrame(this.animFrameId);
+    this.draw();
+    this.triggerPlaybackChange();
+  }
+
+  seek(targetTime) {
+    if (!this.audioBuffer) return;
+    const clampedTime = Math.max(this.startTime, Math.min(this.endTime, targetTime));
+    this.playheadPosition = clampedTime;
+
+    if (this.isPlaying) {
+      this.play();
+    } else {
+      this.draw();
+      this.triggerPlaybackChange();
+    }
+  }
+
+  seekRelative(deltaSeconds) {
+    if (!this.audioBuffer) return;
+    this.seek(this.playheadPosition + deltaSeconds);
+  }
+
+  playSelection() {
+    this.togglePlayPause();
+  }
+
+  stopPlayback() {
+    this.stop();
+  }
+
+  triggerPlaybackChange() {
+    if (this.onPlaybackChange) {
+      this.onPlaybackChange({
+        isPlaying: this.isPlaying,
+        isPaused: this.isPaused,
+        currentTime: this.playheadPosition,
+        startTime: this.startTime,
+        endTime: this.endTime,
+        duration: Math.max(0.1, this.endTime - this.startTime),
+      });
+    }
   }
 
   /**

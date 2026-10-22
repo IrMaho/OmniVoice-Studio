@@ -153,6 +153,7 @@ function initTrimmer() {
   const timeStartEl = document.getElementById('trim-start-time');
   const timeEndEl = document.getElementById('trim-end-time');
   const timeDurationEl = document.getElementById('trim-duration-badge');
+  const playbackTimerEl = document.getElementById('trim-playback-time');
 
   trimmer = new AudioTrimmer('waveform-canvas', {
     onSelectionChange: (sel) => {
@@ -168,14 +169,54 @@ function initTrimmer() {
           timeDurationEl.title = 'طول ایده‌آل برای کلون دقیق';
         }
       }
+      if (playbackTimerEl && !trimmer?.isPlaying && !trimmer?.isPaused) {
+        playbackTimerEl.textContent = `⏱️ ${formatSeconds(sel.startTime)} / ${sel.duration.toFixed(1)}s`;
+      }
     },
     onLoaded: (dur, name) => {
       const nameEl = document.getElementById('audio-file-name');
       const durEl = document.getElementById('audio-total-duration');
       if (nameEl) nameEl.textContent = name;
       if (durEl) durEl.textContent = `${dur.toFixed(1)}s`;
+      if (playbackTimerEl) {
+        playbackTimerEl.textContent = `⏱️ 00:00.0 / ${Math.min(5.0, dur).toFixed(1)}s`;
+      }
       document.getElementById('trimmer-wrapper').style.display = 'flex';
       document.getElementById('drop-zone').style.display = 'none';
+    },
+    onPlaybackChange: (state) => {
+      const playBtn = document.getElementById('btn-play-trim');
+      const iconSpan = document.getElementById('btn-play-trim-icon');
+      const textSpan = document.getElementById('btn-play-trim-text');
+
+      if (state.isPlaying) {
+        if (iconSpan) iconSpan.textContent = '⏸️';
+        if (textSpan) textSpan.textContent = 'مکث';
+        if (playBtn) {
+          playBtn.classList.add('playing');
+          playBtn.title = 'مکث صدا (کلید Space)';
+        }
+      } else if (state.isPaused) {
+        if (iconSpan) iconSpan.textContent = '▶️';
+        if (textSpan) textSpan.textContent = 'ادامه پخش';
+        if (playBtn) {
+          playBtn.classList.remove('playing');
+          playBtn.title = 'ادامه پخش از موقعیت مکث (کلید Space)';
+        }
+      } else {
+        if (iconSpan) iconSpan.textContent = '▶️';
+        if (textSpan) textSpan.textContent = 'پخش برش';
+        if (playBtn) {
+          playBtn.classList.remove('playing');
+          playBtn.title = 'پخش برش صوتی (کلید Space)';
+        }
+      }
+
+      if (playbackTimerEl) {
+        const cur = formatSeconds(state.currentTime);
+        const dur = (state.duration).toFixed(1);
+        playbackTimerEl.textContent = `⏱️ ${cur} / ${dur}s`;
+      }
     }
   });
 
@@ -216,17 +257,35 @@ function initTrimmer() {
     trimmer.setSelection(Math.max(0, mid - 2.5), Math.min(trimmer.duration, mid + 2.5));
   });
 
-  // Play / Pause preview
+  // Play / Pause preview toggle
   const playBtn = document.getElementById('btn-play-trim');
   if (playBtn) {
     playBtn.addEventListener('click', () => {
-      if (trimmer.isPlaying) {
-        trimmer.stopPlayback();
-        playBtn.innerHTML = '<span>▶️</span><span>پخش برش</span>';
-      } else {
-        trimmer.playSelection();
-        playBtn.innerHTML = '<span>⏸️</span><span>توقف</span>';
-      }
+      if (trimmer) trimmer.togglePlayPause();
+    });
+  }
+
+  // Rewind button (⏪ 1s)
+  const rewindBtn = document.getElementById('btn-rewind-trim');
+  if (rewindBtn) {
+    rewindBtn.addEventListener('click', () => {
+      if (trimmer) trimmer.seekRelative(-1.0);
+    });
+  }
+
+  // Fast-forward button (⏩ 1s)
+  const forwardBtn = document.getElementById('btn-forward-trim');
+  if (forwardBtn) {
+    forwardBtn.addEventListener('click', () => {
+      if (trimmer) trimmer.seekRelative(1.0);
+    });
+  }
+
+  // Stop button (⏹️)
+  const stopBtn = document.getElementById('btn-stop-trim');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      if (trimmer) trimmer.stop();
     });
   }
 
@@ -234,6 +293,7 @@ function initTrimmer() {
   const changeBtn = document.getElementById('btn-change-audio');
   if (changeBtn) {
     changeBtn.addEventListener('click', () => {
+      if (trimmer) trimmer.stop();
       if (fileInput) fileInput.value = '';
       document.getElementById('trimmer-wrapper').style.display = 'none';
       document.getElementById('drop-zone').style.display = 'flex';

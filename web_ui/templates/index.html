@@ -180,10 +180,23 @@
                 <div class="trimmer-file-info">
                   <span id="audio-file-name" class="file-name-chip">audio.ogg</span>
                   <span id="audio-total-duration" class="file-dur-chip">0.0s</span>
+                  <span id="trim-playback-time" class="file-playback-chip" title="موقعیت فعلی پخش / طول کل برش">⏱️ 00:00.0 / 05.0s</span>
                 </div>
                 <div class="trimmer-actions">
-                  <button id="btn-play-trim" class="btn-micro"><span>▶️</span><span>پخش برش</span></button>
-                  <button id="btn-change-audio" class="btn-micro secondary">تعویض فایل</button>
+                  <button id="btn-rewind-trim" class="btn-micro" type="button" title="عقب رفتن ۱ ثانیه در حین پخش یا مکث (کلید جهت‌نما چپ ◀)">
+                    <span>⏪ ۱s</span>
+                  </button>
+                  <button id="btn-play-trim" class="btn-micro primary-glow" type="button" title="پخش / مکث صدا (کلید Space)">
+                    <span id="btn-play-trim-icon">▶️</span>
+                    <span id="btn-play-trim-text">پخش برش</span>
+                  </button>
+                  <button id="btn-forward-trim" class="btn-micro" type="button" title="جلو رفتن ۱ ثانیه در حین پخش یا مکث (کلید جهت‌نما راست ▶)">
+                    <span>⏩ ۱s</span>
+                  </button>
+                  <button id="btn-stop-trim" class="btn-micro secondary" type="button" title="توقف و بازگشت به ابتدای برش">
+                    <span>⏹️</span>
+                  </button>
+                  <button id="btn-change-audio" class="btn-micro secondary" type="button">تعویض فایل</button>
                 </div>
               </div>
 
