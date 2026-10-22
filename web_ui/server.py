@@ -7,7 +7,7 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import torch
 import numpy as np
@@ -1612,6 +1612,334 @@ async def api_delete_profile(profile_id: str):
 @app.get("/api/history")
 async def api_history():
     return {"history": history_records}
+
+# ---------------------------------------------------------------------------
+# Multi-Speaker Audio Story & Dialogue Studio (داستان صوتی و نمایش رادیویی)
+# ---------------------------------------------------------------------------
+def synthesize_dialogue_line(
+    text: str,
+    speaker_id: str,
+    speed: float = 1.0,
+    pitch_shift: float = 0.0,
+    guidance_scale: float = 2.0,
+    num_steps: int = 36,
+) -> np.ndarray:
+    """
+    Synthesize a single dialogue line for a given speaker profile or MMS.
+    Returns 1D np.float32 audio array at 24000 Hz.
+    """
+    if speaker_id == "mms":
+        mms_model, mms_tok = get_mms_persian()
+        device = next(mms_model.parameters()).device
+        clean_text = normalize_persian_for_tts(text)
+        inputs = mms_tok(clean_text, return_tensors="pt").to(device)
+        with torch.no_grad():
+            output = mms_model(**inputs).waveform
+        raw_wav = output[0].cpu().numpy().astype(np.float32)
+        if abs(speed - 1.0) >= 0.05:
+            try:
+                import librosa
+                raw_wav = librosa.effects.time_stretch(raw_wav, rate=speed)
+            except Exception:
+                pass
+        import librosa
+        wav_24k = librosa.resample(raw_wav, orig_sr=16000, target_sr=24000)
+        return apply_post_mastering(wav_24k, sample_rate=24000, pitch_shift_steps=pitch_shift, normalize_volume=True)
+
+    global model
+    if model is None:
+        load_omnivoice_model()
+
+    prof_folder = PROFILES_DIR / speaker_id
+    prompt_file = prof_folder / "prompt.pt"
+    ref_audio_file = prof_folder / "reference.wav"
+
+    clean_text = normalize_persian_for_tts(text)
+    clean_text = diacritize_persian(clean_text)
+
+    safe_cfg = float(guidance_scale or 2.0)
+    if safe_cfg > 2.5:
+        safe_cfg = 2.0
+
+    gen_config = OmniVoiceGenerationConfig(
+        num_step=int(num_steps or 36),
+        guidance_scale=safe_cfg,
+        denoise=True,
+        preprocess_prompt=True,
+        postprocess_output=True,
+        audio_chunk_duration=12.0,
+    )
+
+    gen_kwargs = {
+        "text": clean_text,
+        "language": "fa",
+        "speed": float(speed or 1.0),
+        "generation_config": gen_config,
+    }
+
+    if speaker_id in PROFILES_PROMPT_CACHE:
+        gen_kwargs["voice_clone_prompt"] = PROFILES_PROMPT_CACHE[speaker_id]
+    elif prompt_file.exists():
+        prompt = VoiceClonePrompt.load(str(prompt_file))
+        PROFILES_PROMPT_CACHE[speaker_id] = prompt
+        gen_kwargs["voice_clone_prompt"] = prompt
+    elif ref_audio_file.exists():
+        gen_kwargs["ref_audio"] = str(ref_audio_file)
+    else:
+        profiles = load_profiles_db()
+        if profiles:
+            p_id = profiles[0]["id"]
+            p_pt = PROFILES_DIR / p_id / "prompt.pt"
+            if p_pt.exists():
+                gen_kwargs["voice_clone_prompt"] = VoiceClonePrompt.load(str(p_pt))
+
+    audio_list = model.generate(**gen_kwargs)
+    raw_wav = audio_list[0]
+    return apply_post_mastering(raw_wav, sample_rate=24000, pitch_shift_steps=pitch_shift, normalize_volume=True)
+
+
+def assemble_story_audio(
+    dialogue_wavs: List[np.ndarray],
+    pause_after_list: List[float],
+    repeat_list: List[int],
+    sample_rate: int = 24000,
+) -> Tuple[np.ndarray, List[Dict[str, float]]]:
+    """
+    Seamless crossfade stitching of dialogues with repetitions and custom pauses.
+    Returns: (master_wav, timeline_timestamps)
+    """
+    fade_len = int(sample_rate * 0.015)  # 15ms anti-click crossfade
+    fade_in = np.linspace(0, 1, fade_len, dtype=np.float32)
+    fade_out = np.linspace(1, 0, fade_len, dtype=np.float32)
+
+    master_chunks = []
+    timeline = []
+    current_time_sec = 0.0
+
+    for idx, (wav, pause_after, repeat_count) in enumerate(zip(dialogue_wavs, pause_after_list, repeat_list)):
+        repeats = max(1, int(repeat_count))
+        p_sec = max(0.0, float(pause_after))
+
+        line_start = current_time_sec
+
+        for r in range(repeats):
+            w = wav.copy()
+            if len(w) > fade_len * 2:
+                w[:fade_len] *= fade_in
+                w[-fade_len:] *= fade_out
+
+            master_chunks.append(w)
+            current_time_sec += len(w) / sample_rate
+
+            if r < repeats - 1:
+                repeat_pause = int(sample_rate * 0.25)
+                master_chunks.append(np.zeros(repeat_pause, dtype=np.float32))
+                current_time_sec += 0.25
+
+        line_end = current_time_sec
+        timeline.append({
+            "index": idx,
+            "start_sec": round(line_start, 2),
+            "end_sec": round(line_end, 2),
+            "duration_sec": round(line_end - line_start, 2)
+        })
+
+        if p_sec > 0.005:
+            pause_samples = int(sample_rate * p_sec)
+            master_chunks.append(np.zeros(pause_samples, dtype=np.float32))
+            current_time_sec += p_sec
+
+    master_wav = np.concatenate(master_chunks) if master_chunks else np.zeros(sample_rate, dtype=np.float32)
+    peak = np.max(np.abs(master_wav))
+    if peak > 1e-4:
+        master_wav = (master_wav / peak) * 0.94
+
+    return master_wav, timeline
+
+
+@app.post("/api/story/preview-line")
+async def api_story_preview_line(request: Request):
+    """Generate audio for a single dialogue line for preview."""
+    try:
+        data = await request.json()
+        text = data.get("text", "").strip()
+        speaker_id = data.get("speaker_id", "mms")
+        speed = float(data.get("speed", 1.0))
+        pitch_shift = float(data.get("pitch_shift", 0.0))
+        num_steps = int(data.get("num_steps", 24))
+        guidance_scale = float(data.get("guidance_scale", 2.0))
+
+        if not text:
+            raise HTTPException(status_code=400, detail="متن دیالوگ خالی است.")
+
+        task_id = uuid.uuid4().hex[:8]
+        out_path = OUTPUTS_DIR / f"line_{task_id}.wav"
+        out_url = f"/outputs/line_{task_id}.wav"
+
+        loop = asyncio.get_event_loop()
+        wav = await loop.run_in_executor(
+            None,
+            lambda: synthesize_dialogue_line(
+                text=text,
+                speaker_id=speaker_id,
+                speed=speed,
+                pitch_shift=pitch_shift,
+                guidance_scale=guidance_scale,
+                num_steps=num_steps,
+            )
+        )
+
+        sf.write(str(out_path), wav, 24000)
+        dur = round(len(wav) / 24000.0, 2)
+        return {"success": True, "audio_url": out_url, "duration_sec": dur}
+    except Exception as e:
+        logger.error(f"Story preview line error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/story/generate")
+async def api_story_generate(request: Request):
+    """
+    Generate and stitch a full multi-speaker audio story/dialogue.
+    """
+    global current_progress
+    if current_progress["is_busy"]:
+        raise HTTPException(status_code=429, detail="یک فرآیند دیگر در حال اجراست.")
+
+    try:
+        data = await request.json()
+        title = data.get("title", "داستان صوتی").strip() or "داستان صوتی"
+        dialogues = data.get("dialogues", [])
+
+        if not dialogues:
+            raise HTTPException(status_code=400, detail="حداقل یک دیالوگ برای تولید داستان صوتی لازم است.")
+
+        total_lines = len(dialogues)
+        task_id = uuid.uuid4().hex[:8]
+        t_start = time.time()
+
+        current_progress.update({
+            "is_busy": True,
+            "task_id": task_id,
+            "stage": "diffusion",
+            "stage_text": f"آغاز ساخت سناریو صوتی «{title}» ({total_lines} دیالوگ)...",
+            "step": 0,
+            "total_steps": total_lines,
+            "percent": 5,
+            "elapsed_seconds": 0.0,
+            "eta_seconds": 0.0,
+            "error": None,
+        })
+
+        generated_wavs = []
+        pause_list = []
+        repeat_list = []
+
+        loop = asyncio.get_event_loop()
+
+        for idx, item in enumerate(dialogues):
+            line_text = item.get("text", "").strip()
+            speaker_id = item.get("speaker_id", "mms")
+            speaker_name = item.get("speaker_name", "گوینده")
+            speed = float(item.get("speed", 1.0))
+            pitch = float(item.get("pitch_shift", 0.0))
+            pause_after = float(item.get("pause_after", 0.5))
+            repeats = int(item.get("repeat_count", 1))
+            steps = int(item.get("num_steps", 24))
+            cfg = float(item.get("guidance_scale", 2.0))
+
+            if not line_text:
+                continue
+
+            current_progress.update({
+                "stage": "diffusion",
+                "stage_text": f"تولید دیالوگ {idx+1} از {total_lines}: گوینده «{speaker_name}»...",
+                "step": idx + 1,
+                "percent": int(10 + ((idx / max(total_lines, 1)) * 80)),
+                "elapsed_seconds": round(time.time() - t_start, 1),
+            })
+
+            wav = await loop.run_in_executor(
+                None,
+                lambda t=line_text, s=speaker_id, sp=speed, p=pitch, c=cfg, st=steps: synthesize_dialogue_line(
+                    text=t,
+                    speaker_id=s,
+                    speed=sp,
+                    pitch_shift=p,
+                    guidance_scale=c,
+                    num_steps=st,
+                )
+            )
+
+            generated_wavs.append(wav)
+            pause_list.append(pause_after)
+            repeat_list.append(repeats)
+
+        current_progress.update({
+            "stage": "decoding",
+            "stage_text": f"میکس و مونتاژ پیوسته تمام دیالوگ‌ها و فیدهای صوتی...",
+            "percent": 95,
+        })
+
+        master_wav, timeline = assemble_story_audio(
+            generated_wavs,
+            pause_list,
+            repeat_list,
+            sample_rate=24000,
+        )
+
+        out_audio_path = OUTPUTS_DIR / f"story_{task_id}.wav"
+        out_audio_url = f"/outputs/story_{task_id}.wav"
+        sf.write(str(out_audio_path), master_wav, 24000)
+
+        dt = round(time.time() - t_start, 2)
+        total_dur = round(len(master_wav) / 24000.0, 2)
+        rtf = round(dt / max(total_dur, 0.01), 3)
+
+        result_item = {
+            "id": task_id,
+            "mode": f"داستان صوتی و دیالوگ چندنفره: «{title}»",
+            "text": f"سناریوی چندنفره شامل {len(generated_wavs)} دیالوگ با ترکیب صداها",
+            "audio_url": out_audio_url,
+            "duration_sec": total_dur,
+            "elapsed_sec": dt,
+            "rtf": rtf,
+            "created_at": time.strftime("%H:%M:%S"),
+        }
+        history_records.insert(0, result_item)
+
+        current_progress.update({
+            "is_busy": False,
+            "stage": "completed",
+            "stage_text": f"داستان صوتی در {dt} ثانیه ساخته شد! (طول کل: {total_dur}s)",
+            "percent": 100,
+            "elapsed_seconds": dt,
+        })
+
+        return {
+            "success": True,
+            "story_id": task_id,
+            "title": title,
+            "audio_url": out_audio_url,
+            "duration_sec": total_dur,
+            "timeline": timeline,
+            "elapsed_sec": dt,
+        }
+
+    except Exception as e:
+        logger.error(f"Story generation error: {e}", exc_info=True)
+        current_progress.update({
+            "is_busy": False,
+            "stage": "error",
+            "stage_text": f"خطا در ساخت داستان صوتی: {str(e)}",
+            "error": str(e),
+        })
+        return {"success": False, "error": str(e)}
+    finally:
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8001, log_level="info")

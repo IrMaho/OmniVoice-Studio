@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCfgSlider();
   initProfilesManager();
   initFormActions();
+  initStoryStudio();
   loadProfiles();
   loadHistory();
 });
@@ -167,6 +168,7 @@ function initTabs() {
   const tabBtns = document.querySelectorAll('.nav-tab');
   const tabViews = {
     'tab-btn-clone': document.getElementById('view-clone'),
+    'tab-btn-story': document.getElementById('view-story'),
     'tab-btn-profiles': document.getElementById('view-profiles'),
     'tab-btn-design': document.getElementById('view-design'),
     'tab-btn-history': document.getElementById('view-history'),
@@ -186,6 +188,9 @@ function initTabs() {
 
       if (btn.id === 'tab-btn-history') loadHistory();
       if (btn.id === 'tab-btn-profiles') loadProfiles();
+      if (btn.id === 'tab-btn-story' && typeof renderStoryDialogues === 'function') {
+        renderStoryDialogues();
+      }
     });
   });
 
@@ -845,6 +850,10 @@ async function loadProfiles() {
     } else {
       updateSelectedProfileCard(null);
     }
+
+    if (typeof updateStorySpeakerSelects === 'function') {
+      updateStorySpeakerSelects();
+    }
   } catch (e) {
     console.error('Failed to load profiles', e);
   }
@@ -1497,3 +1506,764 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ===========================================================================
+// 10. Multi-Speaker Audio Story & Dialogue Studio
+// ===========================================================================
+let storyDialogues = [];
+
+function initStoryStudio() {
+  const btnAdd = document.getElementById('btn-add-dialogue');
+  const btnLoadSample = document.getElementById('btn-story-load-sample');
+  const btnExport = document.getElementById('btn-story-export-json');
+  const btnImportTrigger = document.getElementById('btn-story-import-trigger');
+  const fileImport = document.getElementById('story-import-file');
+  const btnClearAll = document.getElementById('btn-story-clear-all');
+  const btnGenerateStory = document.getElementById('btn-generate-full-story');
+
+  if (btnAdd) {
+    btnAdd.addEventListener('click', () => {
+      addStoryDialogue();
+    });
+  }
+
+  if (btnLoadSample) {
+    btnLoadSample.addEventListener('click', () => {
+      loadSampleStoryScenario();
+    });
+  }
+
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      exportStoryScenarioJson();
+    });
+  }
+
+  if (btnImportTrigger && fileImport) {
+    btnImportTrigger.addEventListener('click', () => {
+      fileImport.click();
+    });
+
+    fileImport.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const parsed = JSON.parse(evt.target.result);
+          if (Array.isArray(parsed.dialogues)) {
+            storyDialogues = parsed.dialogues;
+            const titleInput = document.getElementById('story-title-input');
+            if (titleInput && parsed.title) titleInput.value = parsed.title;
+            renderStoryDialogues();
+            alert(`سناریو با موفقیت بارگذاری شد (${storyDialogues.length} دیالوگ).`);
+          } else {
+            alert('فرمت فایل نامعتبر است.');
+          }
+        } catch (err) {
+          alert('خطا در خواندن فایل JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      fileImport.value = '';
+    });
+  }
+
+  if (btnClearAll) {
+    btnClearAll.addEventListener('click', () => {
+      if (!storyDialogues.length) return;
+      if (confirm('آیا از حذف تمام دیالوگ‌ها اطمینان دارید؟')) {
+        storyDialogues = [];
+        renderStoryDialogues();
+      }
+    });
+  }
+
+  if (btnGenerateStory) {
+    btnGenerateStory.addEventListener('click', () => {
+      generateFullStory();
+    });
+  }
+
+  // Pre-seed default sample if dialogues list is empty
+  if (storyDialogues.length === 0) {
+    loadSampleStoryScenario(false);
+  } else {
+    renderStoryDialogues();
+  }
+}
+
+function updateStorySpeakerSelects() {
+  if (cachedProfiles && cachedProfiles.length > 0) {
+    const maryam = cachedProfiles.find(p => p.name && p.name.includes('مریم'));
+    const self = cachedProfiles.find(p => p.name && (p.name.includes('خودم') || p.name.includes('محمد') || p.name.includes('من')));
+    
+    storyDialogues.forEach((dlg, idx) => {
+      if (dlg.speaker_id === 'mms') {
+        if (idx % 2 === 0 && maryam) dlg.speaker_id = maryam.id;
+        else if (idx % 2 === 1 && self) dlg.speaker_id = self.id;
+        else dlg.speaker_id = cachedProfiles[0].id;
+      }
+    });
+  }
+  if (typeof renderStoryDialogues === 'function') {
+    renderStoryDialogues();
+  }
+}
+
+function getDefaultSpeakerId() {
+  if (cachedProfiles && cachedProfiles.length > 0) {
+    return cachedProfiles[0].id;
+  }
+  return 'mms';
+}
+
+function addStoryDialogue(initialProps = {}) {
+  const globalPauseSelect = document.getElementById('story-global-pause-select');
+  const defaultPause = globalPauseSelect ? parseFloat(globalPauseSelect.value) : 0.5;
+  const globalStepsSelect = document.getElementById('story-global-steps-select');
+  const defaultSteps = globalStepsSelect ? parseInt(globalStepsSelect.value) : 24;
+
+  const newDlg = {
+    id: 'dlg_' + Math.random().toString(36).substring(2, 9),
+    speaker_id: initialProps.speaker_id || getDefaultSpeakerId(),
+    text: initialProps.text || '',
+    repeat_count: initialProps.repeat_count || 1,
+    pause_after: initialProps.pause_after !== undefined ? initialProps.pause_after : defaultPause,
+    speed: initialProps.speed || 1.0,
+    pitch_shift: initialProps.pitch_shift || 0.0,
+    num_steps: initialProps.num_steps || defaultSteps,
+    guidance_scale: initialProps.guidance_scale || 2.0,
+    preview_url: null,
+    show_tweaks: false,
+  };
+
+  storyDialogues.push(newDlg);
+  renderStoryDialogues();
+
+  // Scroll to bottom
+  const container = document.getElementById('story-dialogues-container');
+  if (container) {
+    setTimeout(() => {
+      container.scrollTop = container.scrollHeight;
+    }, 50);
+  }
+}
+
+function loadSampleStoryScenario(notify = true) {
+  // Find Maryam and Self profiles if they exist
+  let maryamId = 'mms';
+  let selfId = 'mms';
+
+  if (cachedProfiles && cachedProfiles.length > 0) {
+    const maryam = cachedProfiles.find(p => p.name && p.name.includes('مریم'));
+    const self = cachedProfiles.find(p => p.name && (p.name.includes('خودم') || p.name.includes('محمد') || p.name.includes('من')));
+    
+    if (maryam) maryamId = maryam.id;
+    else maryamId = cachedProfiles[0].id;
+
+    if (self) selfId = self.id;
+    else selfId = cachedProfiles.length > 1 ? cachedProfiles[1].id : cachedProfiles[0].id;
+  }
+
+  const titleInput = document.getElementById('story-title-input');
+  if (titleInput) titleInput.value = 'گفتگوی عاشقانه و طنز دونفره';
+
+  storyDialogues = [
+    {
+      id: 'dlg_1',
+      speaker_id: maryamId,
+      text: 'سلام عزیزم! کجایی؟ دلم برات یه ذره شده بود، داشتی چیکار می‌کردی؟',
+      repeat_count: 1,
+      pause_after: 0.0, // بدون مکث و کاملاً پیوسته!
+      speed: 1.0,
+      pitch_shift: 0.0,
+      num_steps: 24,
+      guidance_scale: 2.0,
+      preview_url: null,
+      show_tweaks: false,
+    },
+    {
+      id: 'dlg_2',
+      speaker_id: selfId,
+      text: 'سلام مریم جونم! قربونت برم، داشتم روی مدل‌های هوش مصنوعی صوتی کار می‌کردم تا بتونیم با هم پادکست و داستان صوتی بسازیم.',
+      repeat_count: 1,
+      pause_after: 0.4, // مکث طبیعی
+      speed: 1.0,
+      pitch_shift: 0.0,
+      num_steps: 24,
+      guidance_scale: 2.0,
+      preview_url: null,
+      show_tweaks: false,
+    },
+    {
+      id: 'dlg_3',
+      speaker_id: maryamId,
+      text: 'وای چه عالی و خفن! یعنی الان داریم با صدای شبیه‌سازی‌شده‌ی خودمون حرف می‌زنیم؟ چقدر طبیعیه!',
+      repeat_count: 1,
+      pause_after: 0.0, // بدون مکث
+      speed: 1.0,
+      pitch_shift: 0.0,
+      num_steps: 24,
+      guidance_scale: 2.0,
+      preview_url: null,
+      show_tweaks: false,
+    },
+    {
+      id: 'dlg_4',
+      speaker_id: selfId,
+      text: 'دقیقاً عشق من! بدون کوچک‌ترین مکث و کاملاً پیوسته و با کیفیت استودیویی.',
+      repeat_count: 1,
+      pause_after: 0.0,
+      speed: 1.0,
+      pitch_shift: 0.0,
+      num_steps: 24,
+      guidance_scale: 2.0,
+      preview_url: null,
+      show_tweaks: false,
+    }
+  ];
+
+  renderStoryDialogues();
+  if (notify) {
+    alert('نمونه آماده داستان صوتی (مریم و خودم) بارگذاری شد! می‌توانید دیالوگ‌ها را ویرایش، جابجا یا تکرار کنید و سپس دکمه «تولید و میکس یکپارچه» را بزنید.');
+  }
+}
+
+function exportStoryScenarioJson() {
+  if (!storyDialogues.length) {
+    alert('هیچ دیالوگی برای برون‌ریزی وجود ندارد.');
+    return;
+  }
+  const title = document.getElementById('story-title-input')?.value || 'story_screenplay';
+  const data = {
+    title: title,
+    created_at: new Date().toISOString(),
+    dialogues: storyDialogues.map(d => ({
+      speaker_id: d.speaker_id,
+      text: d.text,
+      repeat_count: d.repeat_count,
+      pause_after: d.pause_after,
+      speed: d.speed,
+      pitch_shift: d.pitch_shift,
+      num_steps: d.num_steps,
+      guidance_scale: d.guidance_scale,
+    }))
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[\s\/:*?"<>|]+/g, '_')}_scenario.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderStoryDialogues() {
+  const container = document.getElementById('story-dialogues-container');
+  if (!container) return;
+
+  const statCount = document.getElementById('story-stat-count');
+  const statSpeakers = document.getElementById('story-stat-speakers');
+
+  if (statCount) statCount.textContent = storyDialogues.length;
+  if (statSpeakers) {
+    const unique = new Set(storyDialogues.map(d => d.speaker_id));
+    statSpeakers.textContent = unique.size;
+  }
+
+  if (storyDialogues.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:3rem 1rem; background:var(--bg-card); border-radius:var(--radius-md); border:1px dashed var(--border-subtle);">
+        <div style="font-size:2.5rem; margin-bottom:0.5rem;">🎭</div>
+        <p style="font-size:0.95rem; font-weight:700; color:var(--text-secondary); margin-bottom:0.5rem;">هیچ دیالوگی در سناریو وجود ندارد.</p>
+        <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">می‌توانید روی «افزودن دیالوگ جدید» کلیک کنید یا نمونه آماده را بارگذاری نمایید.</p>
+        <div style="display:flex; justify-content:center; gap:0.5rem;">
+          <button type="button" onclick="addStoryDialogue()" class="btn-compact-primary">
+            <span>➕</span><span>افزودن اولین دیالوگ</span>
+          </button>
+          <button type="button" onclick="loadSampleStoryScenario()" class="btn-compact-primary" style="background:linear-gradient(135deg, #ec4899, #8b5cf6);">
+            <span>✨</span><span>بارگذاری نمونه آماده (مریم و خودم)</span>
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = storyDialogues.map((dlg, idx) => {
+    const isMms = dlg.speaker_id === 'mms';
+    const profile = cachedProfiles.find(p => p.id === dlg.speaker_id);
+    const speakerName = isMms ? 'گوینده رسمی فارسی (MMS)' : (profile ? profile.name : 'گوینده انتخاب‌شده');
+    const avatarLetter = isMms ? 'ف' : (speakerName ? speakerName.charAt(0) : '👤');
+    const isFirst = idx === 0;
+    const isLast = idx === storyDialogues.length - 1;
+
+    // Available speaker options
+    let speakerOptions = '';
+    if (cachedProfiles && cachedProfiles.length > 0) {
+      speakerOptions += `<optgroup label="بانک گویندگان من">`;
+      cachedProfiles.forEach(p => {
+        const sel = p.id === dlg.speaker_id ? 'selected' : '';
+        speakerOptions += `<option value="${p.id}" ${sel}>👤 ${escapeHtml(p.name)} (${p.description || 'گوینده اختصاصی'})</option>`;
+      });
+      speakerOptions += `</optgroup>`;
+    }
+    speakerOptions += `<optgroup label="گوینده رسمی هوش مصنوعی">`;
+    speakerOptions += `<option value="mms" ${dlg.speaker_id === 'mms' ? 'selected' : ''}>🎙️ گوینده رسمی فارسی (Meta MMS - بدون لهجه)</option>`;
+    speakerOptions += `</optgroup>`;
+
+    const pausePills = [
+      { val: 0.0, label: '⚡ 0.0s (بدون مکث)', seamless: true },
+      { val: 0.3, label: '⏱️ 0.3s' },
+      { val: 0.5, label: '⏱️ 0.5s' },
+      { val: 0.8, label: '⏱️ 0.8s' },
+      { val: 1.2, label: '⏱️ 1.2s' },
+    ];
+
+    const pausePillsHtml = pausePills.map(p => {
+      const isActive = Math.abs(dlg.pause_after - p.val) < 0.05;
+      const cls = `pause-pill-btn ${p.seamless ? 'seamless' : ''} ${isActive ? 'active' : ''}`;
+      return `<button type="button" class="${cls}" onclick="setDialoguePause(${idx}, ${p.val})">${p.label}</button>`;
+    }).join('');
+
+    return `
+      <div class="dialogue-card ${isMms ? 'speaker-mms' : 'speaker-profile'}" id="card-${dlg.id}">
+        
+        <!-- Header: Number, Character Picker, Repeat, Order Buttons -->
+        <div class="dialogue-card-header">
+          <div class="dialogue-character-selector-wrap">
+            <span class="dialogue-idx-badge">#${idx + 1}</span>
+            <div class="dialogue-speaker-avatar" style="${isMms ? 'background:linear-gradient(135deg, #10b981, #059669);' : ''}">${avatarLetter}</div>
+            <select class="dialogue-speaker-select" onchange="updateDialogueSpeaker(${idx}, this.value)">
+              ${speakerOptions}
+            </select>
+          </div>
+
+          <div class="dialogue-card-controls">
+            <!-- Repeat Count Picker -->
+            <div class="dialogue-repeat-picker" title="تعداد دفعات خوانش این دیالوگ">
+              <span>تکرار:</span>
+              <select onchange="updateDialogueRepeat(${idx}, this.value)">
+                <option value="1" ${dlg.repeat_count === 1 ? 'selected' : ''}>۱ بار</option>
+                <option value="2" ${dlg.repeat_count === 2 ? 'selected' : ''}>۲ بار</option>
+                <option value="3" ${dlg.repeat_count === 3 ? 'selected' : ''}>۳ بار</option>
+                <option value="4" ${dlg.repeat_count === 4 ? 'selected' : ''}>۴ بار</option>
+                <option value="5" ${dlg.repeat_count === 5 ? 'selected' : ''}>۵ بار</option>
+              </select>
+            </div>
+
+            <!-- Reorder Buttons -->
+            <button type="button" class="btn-icon-control" ${isFirst ? 'disabled style="opacity:0.3;"' : ''} onclick="moveDialogue(${idx}, -1)" title="انتقال به بالا">▲</button>
+            <button type="button" class="btn-icon-control" ${isLast ? 'disabled style="opacity:0.3;"' : ''} onclick="moveDialogue(${idx}, 1)" title="انتقال به پایین">▼</button>
+            
+            <!-- Duplicate Button -->
+            <button type="button" class="btn-icon-control" onclick="duplicateDialogue(${idx})" title="کپی و تکثیر این دیالوگ">⎘ کپی</button>
+            
+            <!-- Delete Button -->
+            <button type="button" class="btn-icon-control danger" onclick="deleteDialogue(${idx})" title="حذف این دیالوگ">🗑️</button>
+          </div>
+        </div>
+
+        <!-- Textarea with Speech Text -->
+        <textarea 
+          id="text-${dlg.id}" 
+          class="dialogue-text-area" 
+          placeholder="متن دیالوگ را اینجا بنویسید (مثلاً: سلام، حالت چطوره؟)..." 
+          oninput="updateDialogueText(${idx}, this.value)"
+        >${escapeHtml(dlg.text)}</textarea>
+
+        <!-- Mini Text Helpers Toolbar -->
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:0.25rem;">
+            <button type="button" class="btn-micro secondary" style="font-size:0.68rem;" onclick="autoDiacritizeDialogue(${idx})" title="اعراب‌گذاری هوشمند تلفظ برای این دیالوگ">
+              <span>✨ اعراب‌گذاری</span>
+            </button>
+            <button type="button" class="btn-micro secondary" style="font-size:0.68rem;" onclick="insertTextToDialogue(${idx}, '... ')" title="مکث کوتاه">
+              <span>... مکث کوتاه</span>
+            </button>
+            <button type="button" class="btn-micro secondary" style="font-size:0.68rem;" onclick="insertTextToDialogue(${idx}, '... ... ')" title="مکث بلند">
+              <span>... ... مکث بلند</span>
+            </button>
+            <button type="button" class="btn-micro secondary" style="font-size:0.68rem;" onclick="insertTextToDialogue(${idx}, '«', '»')" title="نقل‌قول">
+              <span>«» نقل‌قول</span>
+            </button>
+          </div>
+
+          <!-- Toggle Advanced Tweaks Drawer -->
+          <button type="button" class="btn-micro secondary" style="font-size:0.68rem;" onclick="toggleDialogueTweaks(${idx})">
+            <span>⚙️ ${dlg.show_tweaks ? 'بستن تنظیمات' : 'تنظیمات پیشرفته'}</span>
+          </button>
+        </div>
+
+        <!-- Optional Collapsible Tweaks Drawer -->
+        ${dlg.show_tweaks ? `
+          <div class="dialogue-tweaks-drawer">
+            <div class="dialogue-tweak-item">
+              <label>سرعت خوانش:</label>
+              <select class="form-select-sm" onchange="updateDialogueTweak(${idx}, 'speed', parseFloat(this.value))">
+                <option value="0.8" ${dlg.speed === 0.8 ? 'selected' : ''}>آرام (0.8x)</option>
+                <option value="0.9" ${dlg.speed === 0.9 ? 'selected' : ''}>متوسط آرام (0.9x)</option>
+                <option value="1.0" ${dlg.speed === 1.0 ? 'selected' : ''}>عادی و روان (1.0x)</option>
+                <option value="1.1" ${dlg.speed === 1.1 ? 'selected' : ''}>کمی سریع‌تر (1.1x)</option>
+                <option value="1.2" ${dlg.speed === 1.2 ? 'selected' : ''}>سریع (1.2x)</option>
+              </select>
+            </div>
+            <div class="dialogue-tweak-item">
+              <label>تن صدا (Pitch Shift):</label>
+              <select class="form-select-sm" onchange="updateDialogueTweak(${idx}, 'pitch_shift', parseFloat(this.value))">
+                <option value="-2.0" ${dlg.pitch_shift === -2.0 ? 'selected' : ''}>بم‌تر (-2)</option>
+                <option value="-1.0" ${dlg.pitch_shift === -1.0 ? 'selected' : ''}>کمی بم‌تر (-1)</option>
+                <option value="0.0" ${dlg.pitch_shift === 0.0 ? 'selected' : ''}>طبیعی گوینده (0)</option>
+                <option value="1.0" ${dlg.pitch_shift === 1.0 ? 'selected' : ''}>کمی زیرتر (+1)</option>
+                <option value="2.0" ${dlg.pitch_shift === 2.0 ? 'selected' : ''}>زیرتر (+2)</option>
+              </select>
+            </div>
+            <div class="dialogue-tweak-item">
+              <label>گام‌های کیفیت:</label>
+              <select class="form-select-sm" onchange="updateDialogueTweak(${idx}, 'num_steps', parseInt(this.value))">
+                <option value="16" ${dlg.num_steps === 16 ? 'selected' : ''}>⚡ سریع (۱۶)</option>
+                <option value="24" ${dlg.num_steps === 24 ? 'selected' : ''}>🎯 استاندارد (۲۴)</option>
+                <option value="36" ${dlg.num_steps === 36 ? 'selected' : ''}>💎 دقیق (۳۶)</option>
+              </select>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Footer Row: Transition Pause & Line Preview -->
+        <div class="dialogue-footer-row">
+          <div class="dialogue-transition-wrap">
+            <span class="dialogue-transition-label">انتقال به دیالوگ بعدی:</span>
+            ${pausePillsHtml}
+            <div style="display:inline-flex; align-items:center; gap:2px; margin-right:4px;">
+              <input 
+                type="number" 
+                step="0.1" 
+                min="0" 
+                max="10" 
+                value="${dlg.pause_after}" 
+                style="width:48px; background:var(--bg-surface-elevated); border:1px solid var(--border-subtle); border-radius:var(--radius-xs); color:var(--text-primary); font-size:0.7rem; padding:2px 4px; text-align:center;"
+                onchange="setDialoguePause(${idx}, parseFloat(this.value) || 0)"
+                title="مکث کاستوم بر حسب ثانیه"
+              >
+              <span style="font-size:0.68rem; color:var(--text-muted);">ثانیه</span>
+            </div>
+          </div>
+
+          <div class="dialogue-footer-actions">
+            ${dlg.preview_url ? `
+              <audio id="audio-preview-dlg-${dlg.id}" src="${dlg.preview_url}" controls class="line-mini-audio"></audio>
+            ` : ''}
+            <button type="button" id="btn-preview-dlg-${dlg.id}" class="btn-preview-line" onclick="previewDialogueLine(${idx})">
+              <span>▶️</span><span>تست این خط</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    `;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Story Dialogue Manipulation Handlers
+// ---------------------------------------------------------------------------
+window.updateDialogueSpeaker = function(idx, val) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].speaker_id = val;
+    storyDialogues[idx].preview_url = null;
+    renderStoryDialogues();
+  }
+};
+
+window.updateDialogueRepeat = function(idx, val) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].repeat_count = parseInt(val) || 1;
+  }
+};
+
+window.updateDialogueText = function(idx, val) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].text = val;
+  }
+};
+
+window.setDialoguePause = function(idx, pauseVal) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].pause_after = Math.max(0.0, parseFloat(pauseVal) || 0.0);
+    renderStoryDialogues();
+  }
+};
+
+window.toggleDialogueTweaks = function(idx) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx].show_tweaks = !storyDialogues[idx].show_tweaks;
+    renderStoryDialogues();
+  }
+};
+
+window.updateDialogueTweak = function(idx, prop, val) {
+  if (storyDialogues[idx]) {
+    storyDialogues[idx][prop] = val;
+    storyDialogues[idx].preview_url = null;
+  }
+};
+
+window.moveDialogue = function(idx, direction) {
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= storyDialogues.length) return;
+  const temp = storyDialogues[idx];
+  storyDialogues[idx] = storyDialogues[targetIdx];
+  storyDialogues[targetIdx] = temp;
+  renderStoryDialogues();
+};
+
+window.duplicateDialogue = function(idx) {
+  const source = storyDialogues[idx];
+  if (!source) return;
+  const copy = JSON.parse(JSON.stringify(source));
+  copy.id = 'dlg_' + Math.random().toString(36).substring(2, 9);
+  copy.preview_url = null;
+  storyDialogues.splice(idx + 1, 0, copy);
+  renderStoryDialogues();
+};
+
+window.deleteDialogue = function(idx) {
+  const dlg = storyDialogues[idx];
+  if (!dlg) return;
+  if (dlg.text.trim().length > 0) {
+    if (!confirm('آیا از حذف این دیالوگ اطمینان دارید؟')) return;
+  }
+  storyDialogues.splice(idx, 1);
+  renderStoryDialogues();
+};
+
+window.insertTextToDialogue = function(idx, prefix, suffix = '') {
+  const dlg = storyDialogues[idx];
+  if (!dlg) return;
+  const textarea = document.getElementById(`text-${dlg.id}`);
+  if (!textarea) return;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+  const sel = text.substring(start, end);
+
+  const replacement = prefix + sel + suffix;
+  textarea.value = text.substring(0, start) + replacement + text.substring(end);
+  dlg.text = textarea.value;
+
+  textarea.focus();
+  textarea.setSelectionRange(start + replacement.length, start + replacement.length);
+};
+
+window.autoDiacritizeDialogue = async function(idx) {
+  const dlg = storyDialogues[idx];
+  if (!dlg || !dlg.text.trim()) {
+    alert('متن دیالوگ خالی است.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/diacritize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: dlg.text.trim() }),
+    });
+    const data = await res.json();
+    if (data.success && data.diacritized) {
+      dlg.text = data.diacritized;
+      renderStoryDialogues();
+    } else {
+      alert('خطا در اعراب‌گذاری: ' + (data.error || 'ناشناخته'));
+    }
+  } catch (err) {
+    alert('ارتباط با سرور برقرار نشد.');
+  }
+};
+
+window.previewDialogueLine = async function(idx) {
+  const dlg = storyDialogues[idx];
+  if (!dlg || !dlg.text.trim()) {
+    alert('لطفاً ابتدا متنی برای این دیالوگ بنویسید.');
+    return;
+  }
+
+  const btn = document.getElementById(`btn-preview-dlg-${dlg.id}`);
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span><span>در حال تولید...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/story/preview-line', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: dlg.text.trim(),
+        speaker_id: dlg.speaker_id,
+        speed: dlg.speed || 1.0,
+        pitch_shift: dlg.pitch_shift || 0.0,
+        num_steps: dlg.num_steps || 24,
+        guidance_scale: dlg.guidance_scale || 2.0,
+      }),
+    });
+    const data = await res.json();
+    if (data.success && data.audio_url) {
+      dlg.preview_url = data.audio_url;
+      renderStoryDialogues();
+      setTimeout(() => {
+        const audio = document.getElementById(`audio-preview-dlg-${dlg.id}`);
+        if (audio) audio.play().catch(() => {});
+      }, 80);
+    } else {
+      alert('خطا در تولید پیش‌نمایش دیالوگ: ' + (data.error || 'ناشناخته'));
+    }
+  } catch (err) {
+    alert('خطا در اتصال به سرور: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Generate Full Multi-Speaker Story
+// ---------------------------------------------------------------------------
+async function generateFullStory() {
+  if (!storyDialogues.length) {
+    alert('هیچ دیالوگی برای ساخت داستان صوتی وجود ندارد.');
+    return;
+  }
+
+  for (let i = 0; i < storyDialogues.length; i++) {
+    if (!storyDialogues[i].text.trim()) {
+      alert(`دیالوگ شماره #${i + 1} متن ندارد. لطفاً متن آن را وارد کرده یا دیالوگ را حذف کنید.`);
+      return;
+    }
+  }
+
+  const title = document.getElementById('story-title-input')?.value?.trim() || 'داستان صوتی و دیالوگ';
+  const btnGenerateStory = document.getElementById('btn-generate-full-story');
+  const progressBox = document.getElementById('progress-container');
+  const resultCard = document.getElementById('result-card');
+  const idleCard = document.getElementById('monitor-idle-card');
+
+  if (idleCard) idleCard.style.display = 'none';
+  if (progressBox) progressBox.style.display = 'flex';
+  if (resultCard) resultCard.style.display = 'none';
+  if (btnGenerateStory) btnGenerateStory.disabled = true;
+
+  startProgressTracker();
+
+  // Prepare payload
+  const dialoguesPayload = storyDialogues.map(d => {
+    let sName = 'گوینده';
+    if (d.speaker_id === 'mms') {
+      sName = 'گوینده رسمی MMS';
+    } else {
+      const p = cachedProfiles.find(x => x.id === d.speaker_id);
+      if (p) sName = p.name;
+    }
+
+    return {
+      text: d.text.trim(),
+      speaker_id: d.speaker_id,
+      speaker_name: sName,
+      speed: d.speed || 1.0,
+      pitch_shift: d.pitch_shift || 0.0,
+      pause_after: Math.max(0.0, d.pause_after || 0.0),
+      repeat_count: Math.max(1, d.repeat_count || 1),
+      num_steps: d.num_steps || 24,
+      guidance_scale: d.guidance_scale || 2.0,
+    };
+  });
+
+  try {
+    const res = await fetch('/api/story/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: title,
+        dialogues: dialoguesPayload,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      const rtf = (data.elapsed_sec / (data.duration_sec || 1)).toFixed(2);
+      const resultItem = {
+        id: data.story_id,
+        audio_url: data.audio_url,
+        text: `داستان صوتی «${data.title}» - شامل ${storyDialogues.length} دیالوگ با ترکیب و پیوستگی کامل گویندگان`,
+        duration_sec: data.duration_sec,
+        elapsed_sec: data.elapsed_sec,
+        rtf: rtf,
+      };
+
+      showResult(resultItem);
+      renderStoryTimeline(data.timeline, data.audio_url);
+      loadHistory();
+    } else {
+      alert('⚠️ خطا در ساخت داستان صوتی: ' + (data.error || 'ناشناخته'));
+      if (idleCard) idleCard.style.display = 'flex';
+    }
+  } catch (err) {
+    alert('قطع ارتباط با سرور: ' + err.message);
+    if (idleCard) idleCard.style.display = 'flex';
+  } finally {
+    stopProgressTracker();
+    if (progressBox) progressBox.style.display = 'none';
+    if (btnGenerateStory) btnGenerateStory.disabled = false;
+  }
+}
+
+function renderStoryTimeline(timeline, audioUrl) {
+  const card = document.getElementById('story-timeline-card');
+  const chipsContainer = document.getElementById('story-timeline-chips');
+  const durBadge = document.getElementById('story-timeline-duration');
+  const player = document.getElementById('result-audio-player');
+
+  if (!card || !chipsContainer || !timeline || !timeline.length) return;
+
+  const totalDur = timeline[timeline.length - 1].end_sec;
+  if (durBadge) durBadge.textContent = `طول کل: ${totalDur}s`;
+
+  chipsContainer.innerHTML = timeline.map((item, idx) => {
+    const dlg = storyDialogues[idx];
+    let spk = 'گوینده';
+    if (dlg) {
+      if (dlg.speaker_id === 'mms') spk = 'MMS';
+      else {
+        const p = cachedProfiles.find(x => x.id === dlg.speaker_id);
+        if (p) spk = p.name;
+      }
+    }
+
+    const startMinSec = formatSeconds(item.start_sec);
+    const endMinSec = formatSeconds(item.end_sec);
+    const snippet = dlg ? (dlg.text.length > 25 ? dlg.text.substring(0, 25) + '...' : dlg.text) : '';
+
+    return `
+      <div class="story-timeline-chip" onclick="seekMasterAudio(${item.start_sec})" title="کلیک برای پخش از ثانیه ${item.start_sec}">
+        <span class="chip-time">${startMinSec} - ${endMinSec}</span>
+        <strong>${escapeHtml(spk)}:</strong>
+        <span>«${escapeHtml(snippet)}»</span>
+      </div>
+    `;
+  }).join('');
+
+  card.style.display = 'flex';
+}
+
+window.seekMasterAudio = function(sec) {
+  const player = document.getElementById('result-audio-player');
+  if (player) {
+    player.currentTime = sec;
+    player.play().catch(() => {});
+  }
+};
+

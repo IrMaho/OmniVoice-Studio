@@ -29,8 +29,12 @@
           <span>🎙️</span>
           <span>کلون و خوانش</span>
         </button>
-        <button id="tab-btn-profiles" class="nav-tab" title="مدیریت بانک گویندگان من">
+        <button id="tab-btn-story" class="nav-tab" title="ساخت داستان صوتی و دیالوگ چندنفره">
           <span>🎭</span>
+          <span>داستان صوتی و دیالوگ</span>
+        </button>
+        <button id="tab-btn-profiles" class="nav-tab" title="مدیریت بانک گویندگان من">
+          <span>👥</span>
           <span>بانک گویندگان</span>
         </button>
         <button id="tab-btn-design" class="nav-tab" title="طراحی صدا بر اساس سن، جنسیت و لحن">
@@ -507,7 +511,101 @@
         </div>
 
         <!-- ===============================================================
-             TAB 2: VOICE PROFILES (SPEAKER BANK)
+             TAB 2: MULTI-SPEAKER AUDIO STORY & DIALOGUE STUDIO
+             =============================================================== -->
+        <div id="view-story" class="tab-view-content" style="display:none; flex-direction:column; gap:0.85rem;">
+          
+          <!-- Story Header & Quick Scenario Actions -->
+          <div class="story-tab-header">
+            <div class="story-title-group">
+              <div class="story-icon-badge">🎭</div>
+              <div>
+                <h2 class="section-title">استودیو دیالوگ چندنفره و داستان صوتی</h2>
+                <p class="section-sub">سناریو و گفتگوی چند کاراکتر با صدای گویندگان ذخیره‌شده، تنظیم مکث/پیوستگی، تکرار و میکس نهایی</p>
+              </div>
+            </div>
+            <div class="story-header-actions">
+              <button type="button" id="btn-story-load-sample" class="btn-micro accent" title="بارگذاری نمونه آماده سناریو عاشقانه و طنز">
+                <span>✨</span><span>نمونه آماده (مریم و خودم)</span>
+              </button>
+              <button type="button" id="btn-story-export-json" class="btn-micro secondary" title="برون‌ریزی سناریو به صورت فایل JSON">
+                <span>📤</span><span>ذخیره سناریو</span>
+              </button>
+              <button type="button" id="btn-story-import-trigger" class="btn-micro secondary" title="درون‌ریزی سناریو از فایل JSON">
+                <span>📥</span><span>باز کردن سناریو</span>
+              </button>
+              <input type="file" id="story-import-file" accept=".json" style="display:none;">
+              <button type="button" id="btn-story-clear-all" class="btn-micro danger" title="پاک‌سازی تمام دیالوگ‌ها">
+                <span>🗑️</span><span>پاک‌سازی</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Story Global Settings Strip -->
+          <div class="story-global-strip">
+            <div class="story-meta-field">
+              <label for="story-title-input">عنوان داستان صوتی:</label>
+              <input type="text" id="story-title-input" class="form-input-sm" value="داستان گفتگوی دونفره" placeholder="مثلاً: گفتگوی عاشقانه مریم و محمد">
+            </div>
+            <div class="story-meta-field">
+              <label for="story-global-pause-select">مکث پیش‌فرض بین دیالوگ‌ها:</label>
+              <select id="story-global-pause-select" class="form-select-sm">
+                <option value="0.0">⚡ بدون مکث (0.0s - کاملاً پیوسته)</option>
+                <option value="0.3">⏱️ مکث کوتاه (0.3s)</option>
+                <option value="0.5" selected>⏱️ مکث طبیعی (0.5s)</option>
+                <option value="0.8">⏱️ مکث شمرده (0.8s)</option>
+                <option value="1.2">⏱️ مکث داستانی (1.2s)</option>
+              </select>
+            </div>
+            <div class="story-meta-field">
+              <label for="story-global-steps-select">کیفیت و وضوح پردازش:</label>
+              <select id="story-global-steps-select" class="form-select-sm">
+                <option value="16">⚡ رعدآسا (۱۶ گام)</option>
+                <option value="24" selected>🎯 استاندارد و طبیعی (۲۴ گام)</option>
+                <option value="36">💎 فوق دقیق استودیویی (۳۶ گام)</option>
+              </select>
+            </div>
+            <div class="story-meta-action">
+              <button type="button" id="btn-add-dialogue" class="btn-compact-primary">
+                <span>➕</span><span>افزودن دیالوگ جدید</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Dialogues List Container -->
+          <div id="story-dialogues-container" class="story-dialogues-scroll-list">
+            <!-- Dynamically populated dialogue cards -->
+          </div>
+
+          <!-- Story Timeline & Chapters Card (Revealed after generation) -->
+          <div id="story-timeline-card" class="story-timeline-card" style="display:none;">
+            <div class="story-timeline-header">
+              <div class="story-timeline-title">
+                <span>📍</span>
+                <span>فهرست فصول و نشانه‌های زمانی دیالوگ‌ها (کلیک برای پخش مستقیم):</span>
+              </div>
+              <span id="story-timeline-duration" class="metric-chip">طول کل: 0s</span>
+            </div>
+            <div id="story-timeline-chips" class="story-timeline-chips"></div>
+          </div>
+
+          <!-- Bottom Sticky Generation & Stats Bar -->
+          <div class="story-bottom-action-bar">
+            <div class="story-stats-pill">
+              <span>تعداد دیالوگ‌ها: <strong id="story-stat-count">0</strong></span>
+              <span class="telemetry-sep">•</span>
+              <span>تعداد گویندگان: <strong id="story-stat-speakers">0</strong></span>
+            </div>
+            <button type="button" id="btn-generate-full-story" class="btn-glow-primary">
+              <span class="btn-sparkle">🎬</span>
+              <span>تولید و ترکیب نهایی کل داستان صوتی (یکپارچه)</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- ===============================================================
+             TAB 3: VOICE PROFILES (SPEAKER BANK)
              =============================================================== -->
         <div id="view-profiles" class="tab-view-content" style="display:none;">
           <div class="profiles-tab-header">
