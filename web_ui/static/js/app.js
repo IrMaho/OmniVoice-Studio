@@ -1380,6 +1380,52 @@ function initFormActions() {
     });
   }
 
+  // Google Gemini Multimodal STT (High Precision Persian - matching voisly_bot)
+  const geminiTranscribeBtn = document.getElementById('btn-gemini-transcribe');
+  if (geminiTranscribeBtn) {
+    geminiTranscribeBtn.addEventListener('click', async () => {
+      if (!trimmer || !trimmer.audioBuffer) {
+        alert('لطفاً ابتدا یک فایل صوتی آپلود کنید.');
+        return;
+      }
+      const blob = await trimmer.getTrimmedWavBlob();
+      if (!blob) return;
+
+      geminiTranscribeBtn.disabled = true;
+      geminiTranscribeBtn.innerHTML = '<span class="spin">⏳</span> <span>تحلیل با Gemini...</span>';
+
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, 'trimmed_ref.wav');
+
+        const res = await fetch('/api/transcribe-gemini', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success && data.text) {
+          const refInput = document.getElementById('clone-ref-text');
+          if (refInput) {
+            refInput.value = data.text;
+            refInput.style.borderColor = '#10b981';
+            refInput.style.boxShadow = '0 0 10px rgba(16,185,129,0.3)';
+            setTimeout(() => { 
+              refInput.style.borderColor = ''; 
+              refInput.style.boxShadow = '';
+            }, 2500);
+          }
+        } else {
+          alert('خطا در استخراج متن با Gemini: ' + (data.error || 'ناشناخته'));
+        }
+      } catch (err) {
+        alert('خطا در برقراری ارتباط با Gemini: ' + err.message);
+      } finally {
+        geminiTranscribeBtn.disabled = false;
+        geminiTranscribeBtn.innerHTML = '<span class="sparkle-icon">✨</span> <span>استخراج متن با جمنای</span>';
+      }
+    });
+  }
+
   const transcribeBtn = document.getElementById('btn-auto-transcribe');
   if (transcribeBtn) {
     transcribeBtn.addEventListener('click', async () => {
@@ -3581,7 +3627,12 @@ function initVideoScrubber() {
 
       btnExtract.disabled = true;
       extractLabel.textContent = '⏳ در حال استخراج و تحلیل صدا...';
-      if (extractStatus) extractStatus.textContent = 'در حال استخراج صوتی با کیفیت ۲۴kHz و اجرای مدل Whisper...';
+      const sttEngine = document.getElementById('video-stt-engine')?.value || 'gemini';
+      if (extractStatus) {
+        extractStatus.textContent = sttEngine === 'gemini'
+          ? 'در حال استخراج صوتی با کیفیت ۲۴kHz و استخراج فوق‌دقیق گفتار با هوش مصنوعی Google Gemini...'
+          : 'در حال استخراج صوتی با کیفیت ۲۴kHz و اجرای مدل Whisper...';
+      }
 
       try {
         const fd = new FormData();
@@ -3595,6 +3646,7 @@ function initVideoScrubber() {
         fd.append('end_time', videoOutTime.toFixed(3));
         fd.append('denoise', document.getElementById('chk-video-denoise')?.checked ?? true);
         fd.append('auto_transcribe', document.getElementById('chk-video-auto-transcribe')?.checked ?? true);
+        fd.append('stt_engine', sttEngine);
         fd.append('save_as_profile', false); // Do NOT pollute speaker bank with test voices!
 
         const res = await fetch('/api/video/extract-segment', {

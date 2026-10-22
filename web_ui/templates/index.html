@@ -218,10 +218,13 @@
               </div>
             </div>
 
-            <!-- Reference text helper & whisper transcribe -->
+            <!-- Reference text helper & STT transcribers (Gemini + Whisper) -->
             <div class="ref-text-compact-row">
-              <input type="text" id="clone-ref-text" class="form-input-sm" placeholder="متن صدای مرجع (برای حداکثر شباهت صدا خالی بگذارید تا Whisper خودکار تراز کند)...">
-              <button id="btn-auto-transcribe" type="button" class="btn-micro accent" title="استخراج خودکار متن با مدل Whisper">
+              <input type="text" id="clone-ref-text" class="form-input-sm" placeholder="متن صدای مرجع (با Gemini یا Whisper استخراج کنید یا بنویسید)...">
+              <button id="btn-gemini-transcribe" type="button" class="btn-micro btn-gemini" title="استخراج فوق‌دقیق و هوشمند متن با Google Gemini (دقت استثنایی زبان فارسی)">
+                <span class="sparkle-icon">✨</span> <span>استخراج متن با جمنای</span>
+              </button>
+              <button id="btn-auto-transcribe" type="button" class="btn-micro accent" title="استخراج خودکار متن با مدل آفلاین Whisper">
                 <span>🎙️ Whisper</span>
               </button>
               <button id="btn-clear-ref-text" type="button" class="btn-micro secondary" title="پاک کردن متن">
@@ -1176,17 +1179,23 @@
         </div>
       </div>
 
-      <!-- Enhancement & Whisper Options -->
-      <div class="video-options-row">
+      <!-- Enhancement & STT Options -->
+      <div class="video-options-row" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.6rem;">
         <label class="compact-checkbox-label" title="کاهش نویز محیطی و افکت‌های پس‌زمینه فیلم برای ایزوله‌سازی بهتر تار صوتی">
           <input type="checkbox" id="chk-video-denoise" checked>
           <span>✨ حذف نویز و شفاف‌سازی صدای دیالوگ (Vocal Isolation & Denoise)</span>
         </label>
 
-        <label class="compact-checkbox-label" title="استخراج خودکار متن کلام کاراکتر با مدل Whisper و پر کردن خودکار فیلد متن مرجع">
-          <input type="checkbox" id="chk-video-auto-transcribe" checked>
-          <span>🎙️ استخراج خودکار متن دیالوگ با Whisper</span>
-        </label>
+        <div style="display:flex; align-items:center; gap:0.45rem;">
+          <label class="compact-checkbox-label" title="استخراج خودکار متن کلام کاراکتر با هوش مصنوعی و پر کردن خودکار فیلد متن مرجع">
+            <input type="checkbox" id="chk-video-auto-transcribe" checked>
+            <span>🎙️ استخراج خودکار متن:</span>
+          </label>
+          <select id="video-stt-engine" class="form-select-sm" style="padding:0.25rem 0.55rem; font-size:0.75rem; border-radius:var(--radius-xs); border:1px solid rgba(99,102,241,0.4); background:var(--bg-card); color:var(--text-main); font-weight:700; cursor:pointer;">
+            <option value="gemini" selected>✨ هوش مصنوعی Gemini (بسیار دقیق)</option>
+            <option value="whisper">🎙️ مدل آفلاین Whisper</option>
+          </select>
+        </div>
       </div>
 
       <!-- Modal Footer -->

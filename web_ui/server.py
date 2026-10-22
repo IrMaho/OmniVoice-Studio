@@ -368,6 +368,131 @@ async def api_system_info():
 async def api_progress():
     return current_progress
 
+DEFAULT_GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyATzylw5xqJhqFLP2b-TNNU_68_ViYhujM")
+
+def transcribe_with_gemini(
+    audio_source: Any,
+    mime_type: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    """
+    Transcribes Persian speech from audio with ultra-high precision using Google Gemini
+    (matching the voisly_bot implementation).
+    """
+    import base64
+    import requests
+
+    key = (api_key or "").strip() or DEFAULT_GEMINI_API_KEY
+    if not key:
+        raise ValueError("کلید دسترسی Gemini API موجود نیست.")
+
+    if isinstance(audio_source, (str, Path)):
+        p = Path(audio_source)
+        with open(p, "rb") as f:
+            audio_bytes = f.read()
+        if not mime_type:
+            ext = p.suffix.lower()
+            if ext == ".wav":
+                mime_type = "audio/wav"
+            elif ext in [".ogg", ".oga"]:
+                mime_type = "audio/ogg"
+            elif ext == ".mp3":
+                mime_type = "audio/mp3"
+            elif ext == ".m4a":
+                mime_type = "audio/m4a"
+            else:
+                mime_type = "audio/wav"
+    else:
+        audio_bytes = audio_source
+        if not mime_type:
+            mime_type = "audio/wav"
+
+    if not audio_bytes:
+        raise ValueError("فایل صوتی برای استخراج متن خالی است.")
+
+    b64_data = base64.b64encode(audio_bytes).decode("utf-8")
+
+    # Priority models matching voisly_bot
+    models_to_try = [
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-flash-latest",
+    ]
+
+    prompt_text = "لطفاً عین گفتار داخل این صوت را با دقت تمام پیاده‌سازی کن و فقط متن کامل آن را بنویس بدون هیچ توضیح اضافه، پیش‌گفتار، یا احوالپرسی:"
+
+    payload = {
+        "contents": [{
+            "role": "user",
+            "parts": [
+                {"text": prompt_text},
+                {
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": b64_data,
+                    }
+                }
+            ]
+        }],
+        "generationConfig": {
+            "temperature": 0.1
+        }
+    }
+
+    last_error = "هیچ مدلی موفق به استخراج نشد."
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+        try:
+            resp = requests.post(url, json=payload, timeout=25)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        text = parts[0].get("audioTranscription", {}).get("text") or parts[0].get("text")
+                        if text and text.strip():
+                            logger.info(f"Gemini STT succeeded with {model_name}: {text.strip()[:60]}...")
+                            return text.strip()
+            else:
+                err_msg = f"{model_name} (HTTP {resp.status_code}): {resp.text[:140]}"
+                logger.warning(f"Gemini STT attempt failed: {err_msg}")
+                last_error = err_msg
+        except Exception as e:
+            logger.warning(f"Gemini STT model {model_name} error: {e}")
+            last_error = str(e)
+
+    raise RuntimeError(f"خطا در استخراج متن با Gemini: {last_error}")
+
+@app.post("/api/transcribe-gemini")
+async def api_transcribe_gemini(
+    audio: UploadFile = File(...),
+    api_key: Optional[str] = Form(None),
+):
+    """Transcribe a reference audio snippet using Google Gemini multimodal STT."""
+    try:
+        content = await audio.read()
+        filename = audio.filename or "audio.wav"
+        ext = Path(filename).suffix.lower()
+        mime_type = "audio/wav"
+        if ext == ".mp3":
+            mime_type = "audio/mp3"
+        elif ext in [".ogg", ".oga"]:
+            mime_type = "audio/ogg"
+        elif ext == ".m4a":
+            mime_type = "audio/m4a"
+
+        t0 = time.time()
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(None, lambda: transcribe_with_gemini(content, mime_type, api_key))
+        dt = time.time() - t0
+        return {"success": True, "text": text, "elapsed_seconds": round(dt, 2), "engine": "gemini"}
+    except Exception as e:
+        logger.error(f"Gemini transcription error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
 @app.post("/api/transcribe")
 async def api_transcribe(audio: UploadFile = File(...)):
     """Transcribe a reference audio snippet using the cached Whisper model."""
@@ -462,12 +587,13 @@ async def api_video_extract_segment(
     end_time: float = Form(5.0),
     denoise: bool = Form(True),
     auto_transcribe: bool = Form(True),
+    stt_engine: str = Form("gemini"),
     save_as_profile: bool = Form(False),
     profile_name: Optional[str] = Form(None),
     profile_desc: Optional[str] = Form(""),
 ):
     """
-    Extracts dialogue segment from movie/video file, applies vocal polish, transcribes with Whisper,
+    Extracts dialogue segment from movie/video file, applies vocal polish, transcribes with Gemini or Whisper,
     and optionally registers directly into the Voice Profiles bank.
     """
     global model, current_progress
@@ -518,12 +644,24 @@ async def api_video_extract_segment(
 
         transcription = ""
         if auto_transcribe:
-            try:
-                transcription = model.transcribe(str(out_wav_path))
-                logger.info(f"Video dialogue auto-transcribed: {transcription[:80]}...")
-            except Exception as te:
-                logger.warning(f"Whisper transcription failed: {te}")
-                transcription = ""
+            if stt_engine == "gemini":
+                try:
+                    transcription = transcribe_with_gemini(out_wav_path)
+                    logger.info(f"Video dialogue auto-transcribed with Gemini: {transcription[:80]}...")
+                except Exception as ge:
+                    logger.warning(f"Gemini transcription failed, trying Whisper fallback: {ge}")
+                    try:
+                        transcription = model.transcribe(str(out_wav_path))
+                    except Exception as te:
+                        logger.warning(f"Whisper transcription also failed: {te}")
+                        transcription = ""
+            else:
+                try:
+                    transcription = model.transcribe(str(out_wav_path))
+                    logger.info(f"Video dialogue auto-transcribed with Whisper: {transcription[:80]}...")
+                except Exception as te:
+                    logger.warning(f"Whisper transcription failed: {te}")
+                    transcription = ""
 
         prof_record = None
         if save_as_profile and profile_name and profile_name.strip():
@@ -1601,11 +1739,16 @@ async def api_convert_voice(
             if not spoken_text:
                 current_progress.update({
                     "stage": "transcribing",
-                    "stage_text": "۲. استخراج گفتار با مدل هوش مصنوعی Whisper...",
+                    "stage_text": "۲. استخراج گفتار با مدل هوش مصنوعی Gemini...",
                     "percent": 30,
                 })
-                spoken_text = model.transcribe(str(src_audio_path))
-                logger.info(f"VC Whisper auto-transcribed: {spoken_text[:100]}...")
+                try:
+                    spoken_text = transcribe_with_gemini(src_audio_path)
+                    logger.info(f"VC Gemini auto-transcribed: {spoken_text[:100]}...")
+                except Exception as ge:
+                    logger.warning(f"VC Gemini STT failed, falling back to Whisper: {ge}")
+                    spoken_text = model.transcribe(str(src_audio_path))
+                    logger.info(f"VC Whisper auto-transcribed: {spoken_text[:100]}...")
 
             if not spoken_text or not spoken_text.strip():
                 raise ValueError("گفتار یا کلام مشخصی در فایل صوتی ورودی تشخیص داده نشد.")
