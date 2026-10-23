@@ -538,6 +538,26 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+[data-theme="light"] .compact-trimmer,
+body.light-theme .compact-trimmer {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .file-dur-chip,
+body.light-theme .file-dur-chip {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+[data-theme="light"] .file-playback-chip,
+body.light-theme .file-playback-chip {
+  background: rgba(2, 132, 199, 0.1);
+  border: 1px solid rgba(2, 132, 199, 0.3);
+  color: #0284c7;
+}
+
 .trimmer-actions {
   display: flex;
   align-items: center;
@@ -1908,13 +1928,20 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.35rem 0.6rem;
-  background: rgba(0, 0, 0, 0.12);
-  border: 1px dashed var(--border-subtle);
+  padding: 0.45rem 0.8rem;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px dashed rgba(99, 102, 241, 0.25);
   border-radius: var(--radius-xs);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   color: var(--text-secondary);
   flex-wrap: wrap;
+}
+
+[data-theme="light"] .story-sub-options-row,
+body.light-theme .story-sub-options-row {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  color: #1e293b;
 }
 
 .story-toggle-label {
@@ -1944,6 +1971,13 @@ html, body {
   border-radius: 12px;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+[data-theme="light"] .story-format-badge-pill,
+body.light-theme .story-format-badge-pill {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
 }
 
 .story-meta-field {
@@ -2380,32 +2414,51 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  padding: 0.55rem 0.9rem;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(217, 70, 239, 0.16));
-  border: 1.5px solid rgba(168, 85, 247, 0.4);
+  padding: 0.65rem 1rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(217, 70, 239, 0.22));
+  border: 1.5px solid rgba(168, 85, 247, 0.5);
   border-radius: var(--radius-sm);
   color: #ffffff;
   font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.86rem;
+  font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.2);
   transition: all var(--transition-fast);
 }
 
 .btn-video-launcher:hover {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(217, 70, 239, 0.3));
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(217, 70, 239, 0.35));
   border-color: #d946ef;
-  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.35);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.45);
+  transform: translateY(-1.5px);
+}
+
+/* Light Mode Theme Fix: High Contrast & Crystal Clear Text for Video Launcher */
+[data-theme="light"] .btn-video-launcher,
+body.light-theme .btn-video-launcher {
+  background: linear-gradient(135deg, #ede9fe 0%, #fae8ff 100%);
+  border: 1.5px solid #a855f7;
+  color: #4c1d95;
+  box-shadow: 0 3px 12px rgba(147, 51, 234, 0.16);
+}
+
+[data-theme="light"] .btn-video-launcher:hover,
+body.light-theme .btn-video-launcher:hover {
+  background: linear-gradient(135deg, #e0e7ff 0%, #f5d0fe 100%);
+  border-color: #7c3aed;
+  color: #2e1065;
+  box-shadow: 0 4px 18px rgba(147, 51, 234, 0.28);
 }
 
 .badge-new-pulse {
-  background: #ec4899;
-  color: #fff;
-  font-size: 0.65rem;
-  padding: 1px 6px;
+  background: linear-gradient(135deg, #ec4899, #db2777);
+  color: #ffffff;
+  font-size: 0.68rem;
+  padding: 2px 7px;
   border-radius: 8px;
   font-weight: 800;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.4);
   animation: pulseGlow 1.5s infinite;
 }
 
@@ -3388,10 +3441,35 @@ html, body {
   direction: ltr;
   text-align: left;
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   color: #cbd5e1;
   word-break: break-all;
   user-select: all;
+}
+
+/* Light Theme: Saved Location Strip Theme Harmonization */
+[data-theme="light"] .result-saved-location-strip,
+body.light-theme .result-saved-location-strip {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+}
+
+[data-theme="light"] .saved-location-header,
+body.light-theme .saved-location-header {
+  color: #047857;
+}
+
+[data-theme="light"] .saved-location-box,
+body.light-theme .saved-location-box {
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+}
+
+[data-theme="light"] .saved-location-box code,
+body.light-theme .saved-location-box code {
+  color: #14532d;
+  font-weight: 700;
 }
 
 .btn-micro-action {

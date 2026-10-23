@@ -73,8 +73,10 @@ class AudioTrimmer {
       desiredEnd = this.startTime + maxDur;
     }
     this.endTime = desiredEnd;
+    this.playheadPosition = this.startTime;
     this.triggerChange();
     this.draw();
+    this.triggerPlaybackChange();
   }
 
   triggerChange() {
@@ -357,18 +359,22 @@ class AudioTrimmer {
     });
   }
 
-  togglePlayPause() {
+  async togglePlayPause() {
     if (this.isPlaying) {
       this.pause();
     } else {
-      this.play();
+      await this.play();
     }
   }
 
-  play() {
+  async play() {
     if (!this.audioBuffer) return;
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+    try {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+    } catch (e) {
+      console.warn('AudioContext resume error:', e);
     }
 
     if (this.activeSource) {
@@ -383,14 +389,20 @@ class AudioTrimmer {
       this.playheadPosition = this.startTime;
     }
 
-    const offset = this.playheadPosition;
+    const offset = Math.max(0, this.playheadPosition);
     const remainingDuration = Math.max(0.05, this.endTime - offset);
 
     const source = this.audioContext.createBufferSource();
     source.buffer = this.audioBuffer;
     source.connect(this.audioContext.destination);
 
-    source.start(0, offset, remainingDuration);
+    try {
+      source.start(0, offset, remainingDuration);
+    } catch (err) {
+      console.error('Error starting AudioBufferSourceNode:', err);
+      return;
+    }
+
     this.activeSource = source;
     this.isPlaying = true;
     this.isPaused = false;
@@ -432,7 +444,6 @@ class AudioTrimmer {
   }
 
   pause() {
-    if (!this.isPlaying) return;
     this._isSeeking = true;
     if (this.activeSource) {
       try { this.activeSource.stop(); } catch (e) {}
@@ -457,7 +468,7 @@ class AudioTrimmer {
 
     this.isPlaying = false;
     this.isPaused = false;
-    this.playheadPosition = this.startTime;
+    this.playheadPosition = this.startTime || 0;
     cancelAnimationFrame(this.animFrameId);
     this.draw();
     this.triggerPlaybackChange();
@@ -478,7 +489,10 @@ class AudioTrimmer {
 
   seekRelative(deltaSeconds) {
     if (!this.audioBuffer) return;
-    this.seek(this.playheadPosition + deltaSeconds);
+    const cur = (typeof this.playheadPosition === 'number' && !isNaN(this.playheadPosition)) 
+      ? this.playheadPosition 
+      : (this.startTime || 0);
+    this.seek(cur + deltaSeconds);
   }
 
   playSelection() {

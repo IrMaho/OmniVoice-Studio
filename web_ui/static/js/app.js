@@ -292,11 +292,20 @@ function initTrimmer() {
   // Change audio file
   const changeBtn = document.getElementById('btn-change-audio');
   if (changeBtn) {
-    changeBtn.addEventListener('click', () => {
-      if (trimmer) trimmer.stop();
-      if (fileInput) fileInput.value = '';
-      document.getElementById('trimmer-wrapper').style.display = 'none';
-      document.getElementById('drop-zone').style.display = 'flex';
+    changeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        if (trimmer && typeof trimmer.stop === 'function') trimmer.stop();
+      } catch (err) {}
+      const tw = document.getElementById('trimmer-wrapper');
+      const dz = document.getElementById('drop-zone');
+      if (tw) tw.style.display = 'none';
+      if (dz) dz.style.display = 'flex';
+      if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+      }
     });
   }
 }
@@ -2890,18 +2899,24 @@ async function handleCreateNewScenario() {
 }
 
 function handleSaveCurrentScenario() {
+  // 1. Synchronize any edited text from DOM into storyDialogues
+  if (Array.isArray(storyDialogues)) {
+    storyDialogues.forEach((dlg) => {
+      const txtArea = document.getElementById(`text-${dlg.id}`);
+      if (txtArea) dlg.text = txtArea.value;
+    });
+  }
+
   if (!storyDialogues || !storyDialogues.length) {
     alert('سناریو هنوز خالی است. لطفاً ابتدا حداقل یک دیالوگ اضافه کنید.');
     return;
   }
 
   const titleInput = document.getElementById('story-title-input');
-  let title = titleInput?.value?.trim();
-  if (!title || title === 'سناریوی جدید') {
-    title = prompt('نام این سناریو را وارد کنید:', title || 'سناریوی من');
-    if (!title || !title.trim()) return;
-    title = title.trim();
-    if (titleInput) titleInput.value = title;
+  const filenameInput = document.getElementById('story-custom-filename');
+  let title = titleInput?.value?.trim() || filenameInput?.value?.trim() || 'سناریوی داستان صوتی';
+  if (titleInput && (!titleInput.value || !titleInput.value.trim())) {
+    titleInput.value = title;
   }
 
   const scenarios = getSavedScenarios();
@@ -2920,6 +2935,7 @@ function handleSaveCurrentScenario() {
         speakers_count: uniqueSpeakers,
       };
       saveScenariosToStorage(scenarios);
+      flashSaveScenarioBtn();
       alert(`💾 سناریو «${title}» با موفقیت به‌روزرسانی و ذخیره شد!`);
       return;
     }
@@ -2939,7 +2955,21 @@ function handleSaveCurrentScenario() {
 
   scenarios.unshift(newRecord);
   saveScenariosToStorage(scenarios);
+  flashSaveScenarioBtn();
   alert(`💾 سناریو «${title}» با موفقیت در کتابخانه سناریوها ذخیره گردید!`);
+}
+
+function flashSaveScenarioBtn() {
+  const saveBtn = document.getElementById('btn-story-save-scenario');
+  if (saveBtn) {
+    const origHtml = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span>✅</span><span>ذخیره شد!</span>';
+    saveBtn.style.background = 'linear-gradient(135deg, #059669, #047857)';
+    setTimeout(() => {
+      saveBtn.innerHTML = origHtml;
+      saveBtn.style.background = '';
+    }, 2000);
+  }
 }
 
 function openScenariosModal() {
